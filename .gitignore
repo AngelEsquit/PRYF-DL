@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.streamlit/secrets.toml
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+data/raw/
+models/
