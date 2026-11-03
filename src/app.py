@@ -19,7 +19,7 @@ detector = load_detector()
 col1, col2 = st.columns(2)
 with col1:
     event = st.toggle("Simular evento sísmico", value=True)
-    threshold = st.slider("Umbral de alerta", 0.40, 0.90, 0.65, 0.05)
+    threshold = st.slider("Umbral de alerta (óptimo por valor en validación: 0.85)", 0.40, 0.90, 0.85, 0.05)
 with col2:
     seed = st.number_input("Semilla reproducible", min_value=1, value=23361, step=1)
 

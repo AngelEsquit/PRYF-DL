@@ -10,8 +10,11 @@ componentes antes de la onda S y convertir la anticipación en valor operativo.
 - Detector profundo `DeepPhase` (MLP de dos capas) inspirado en un picker de fases.
 - Baseline clásico STA/LTA.
 - Métricas técnicas: error de picking, precisión, recall, F1 y latencia.
-- Métrica de negocio: valor neto = segundos de anticipación valorizados menos
-  costo de falsas alarmas.
+- Modelo de valor explícito: valor neto = anticipación valorizada - falsas
+  alarmas - eventos no detectados - costo de operación, con supuestos
+  documentados en `ValueParams` (`src/seismic.py`).
+- Curva de valor por umbral, selección del umbral por valor en un conjunto de
+  validación y análisis de sensibilidad (±20 % y ±50 %).
 - Dashboard Streamlit para demostrar una ventana, la alerta y la comparación.
 - Informe completo en [`docs/informe.tex`](docs/informe.tex) y PDF en
   [`docs/informe.pdf`](docs/informe.pdf).
@@ -31,7 +34,8 @@ Para reproducir las métricas:
 .venv/bin/python src/evaluate.py
 ```
 
-El comando genera `results/metrics.json`. Las señales sintéticas son una
+El comando genera `results/metrics.json` (métricas, curva de valor y sensibilidad) y
+`results/value_curve.png`. Las señales sintéticas son una
 validación controlada del pipeline; la integración con STEAD o FDSN/IRIS queda
 preparada como siguiente etapa y se documenta explícitamente en el informe.
 

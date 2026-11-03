@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy.signal import butter, filtfilt
@@ -144,16 +145,115 @@ def sta_lta_detect(signal: np.ndarray, sample_rate: float = 100.0, threshold: fl
     )
 
 
+# ---------------------------------------------------------------------------
+# Modelo de valor
+# ---------------------------------------------------------------------------
+
+SAMPLE_RATE = 100.0
+VALIDATION_SEED = 777  # distinto de la semilla de entrenamiento (23361) y de prueba (2026)
+MEAN_S_MINUS_P_S = 1.9  # media de U(1.0, 2.8) s del generador sintético
+
+
+@dataclass(frozen=True)
+class ValueParams:
+    """Supuestos económicos (USD) del modelo de valor. Todos son estimaciones.
+
+    value_per_second: pérdida evitada por cada segundo de aviso útil antes de la
+        onda S (paro de maquinaria, cierre de gas, aviso al personal).
+    false_alarm_cost: costo de un paro innecesario provocado por una falsa alarma.
+    missed_event_cost: pérdida adicional de un evento no detectado (sin aviso).
+    operating_cost_per_window: costo de cómputo/operación por ventana evaluada.
+    """
+
+    value_per_second: float = 1000.0
+    false_alarm_cost: float = 2500.0
+    missed_event_cost: float = 10000.0
+    operating_cost_per_window: float = 1.0
+
+
+DEFAULT_VALUE_PARAMS = ValueParams()
+
+
 def business_value(
     tp: int,
     fp: int,
+    fn: int = 0,
     *,
-    seconds_advance: float = 4.0,
-    value_per_second: float = 1000.0,
-    false_alarm_cost: float = 2500.0,
+    n_windows: int = 0,
+    seconds_advance: float = MEAN_S_MINUS_P_S,
+    params: ValueParams = DEFAULT_VALUE_PARAMS,
 ) -> float:
-    """Valor neto de operar el detector en una ventana de decisión."""
-    return tp * seconds_advance * value_per_second - fp * false_alarm_cost
+    """Valor neto = TP*anticipación*$/s - FP*costo_FA - FN*costo_FN - ventanas*costo_op."""
+    return (
+        tp * seconds_advance * params.value_per_second
+        - fp * params.false_alarm_cost
+        - fn * params.missed_event_cost
+        - n_windows * params.operating_cost_per_window
+    )
+
+
+def make_eval_set(*, seed: int = 2026, n_events: int = 30, n_noise: int = 30) -> list[SignalExample]:
+    """Conjunto de prueba reproducible, independiente del de entrenamiento."""
+    rng = np.random.default_rng(seed)
+    return [generate_example(rng, event=event) for event in [True] * n_events + [False] * n_noise]
+
+
+def _outcome(detect: Callable[[np.ndarray], Detection], examples: list[SignalExample]) -> dict[str, float]:
+    """Cuenta TP/FP/FN y acumula error de picking, anticipación y latencia."""
+    tp = fp = fn = 0
+    errors: list[float] = []
+    advances: list[float] = []
+    latencies: list[float] = []
+    for example in examples:
+        detection = detect(example.signal)
+        latencies.append(detection.latency_ms)
+        if example.label:
+            if detection.detected:
+                tp += 1
+                errors.append(abs(detection.sample - example.p_arrival) / SAMPLE_RATE)
+                # La anticipación útil no puede superar S-P ni ser negativa.
+                advance = (example.s_arrival - detection.sample) / SAMPLE_RATE
+                max_advance = (example.s_arrival - example.p_arrival) / SAMPLE_RATE
+                advances.append(float(np.clip(advance, 0.0, max_advance)))
+            else:
+                fn += 1
+        elif detection.detected:
+            fp += 1
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "n_windows": len(examples),
+        "mean_error": float(np.mean(errors)) if errors else 99.0,
+        "mean_advance": float(np.mean(advances)) if advances else 0.0,
+        "mean_latency": float(np.mean(latencies)),
+    }
+
+
+def _value(outcome: dict[str, float], params: ValueParams) -> float:
+    return business_value(
+        int(outcome["tp"]),
+        int(outcome["fp"]),
+        int(outcome["fn"]),
+        n_windows=int(outcome["n_windows"]),
+        seconds_advance=outcome["mean_advance"],
+        params=params,
+    )
+
+
+def _summary(outcome: dict[str, float], params: ValueParams) -> dict[str, float | int]:
+    tp, fp, fn = int(outcome["tp"]), int(outcome["fp"]), int(outcome["fn"])
+    return {
+        "precision": round(tp / (tp + fp) if tp + fp else 0, 4),
+        "recall": round(tp / (tp + fn) if tp + fn else 0, 4),
+        "f1": round(2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0, 4),
+        "mean_picking_error_s": round(outcome["mean_error"], 4),
+        "mean_advance_s": round(outcome["mean_advance"], 4),
+        "true_positives": tp,
+        "false_positives": fp,
+        "false_negatives": fn,
+        "business_value": round(_value(outcome, params), 2),
+    }
 
 
 def evaluate_detector(
@@ -163,56 +263,116 @@ def evaluate_detector(
     n_events: int = 30,
     n_noise: int = 30,
     threshold: float = 0.65,
+    params: ValueParams = DEFAULT_VALUE_PARAMS,
 ) -> dict[str, float | int]:
     detector = detector or DeepPhaseDetector()
-    rng = np.random.default_rng(seed)
-    results: dict[str, list[float]] = {"tp": [], "fp": [], "error": [], "latency": []}
-    for event in [True] * n_events + [False] * n_noise:
-        example = generate_example(rng, event=event)
-        detection = detector.detect(example.signal, threshold=threshold)
-        if event:
-            results["tp"].append(float(detection.detected))
-            if detection.detected and example.p_arrival is not None:
-                results["error"].append(abs(detection.sample - example.p_arrival) / 100)
-        else:
-            results["fp"].append(float(detection.detected))
-        results["latency"].append(detection.latency_ms)
-    tp, fp = sum(results["tp"]), sum(results["fp"])
-    fn = n_events - tp
+    examples = make_eval_set(seed=seed, n_events=n_events, n_noise=n_noise)
+    outcome = _outcome(lambda s: detector.detect(s, threshold=threshold), examples)
+    result = _summary(outcome, params)
+    result.update(events=n_events, noise_windows=n_noise, mean_latency_ms=round(outcome["mean_latency"], 4))
+    return result
+
+
+def evaluate_baseline(
+    *,
+    seed: int = 2026,
+    n_events: int = 30,
+    n_noise: int = 30,
+    threshold: float = 3.0,
+    params: ValueParams = DEFAULT_VALUE_PARAMS,
+) -> dict[str, float | int]:
+    examples = make_eval_set(seed=seed, n_events=n_events, n_noise=n_noise)
+    outcome = _outcome(lambda s: sta_lta_detect(s, threshold=threshold), examples)
+    return _summary(outcome, params)
+
+
+DEEP_THRESHOLDS = tuple(round(0.40 + 0.05 * i, 2) for i in range(11))  # 0.40 ... 0.90
+STALTA_THRESHOLDS = tuple(round(1.5 + 0.5 * i, 1) for i in range(10))  # 1.5 ... 6.0
+
+
+def _sweep(
+    make_detect: Callable[[float], Callable[[np.ndarray], Detection]],
+    thresholds: tuple[float, ...],
+    examples: list[SignalExample],
+) -> list[dict[str, float]]:
+    return [{"threshold": t, **_outcome(make_detect(t), examples)} for t in thresholds]
+
+
+def _deep_sweep(detector: DeepPhaseDetector, examples: list[SignalExample]) -> list[dict[str, float]]:
+    return _sweep(lambda t: (lambda s: detector.detect(s, threshold=t)), DEEP_THRESHOLDS, examples)
+
+
+def value_curve(
+    detector: DeepPhaseDetector | None = None,
+    *,
+    examples: list[SignalExample] | None = None,
+    params: ValueParams = DEFAULT_VALUE_PARAMS,
+) -> dict[str, list[dict[str, float | int]]]:
+    """Valor neto y métricas técnicas al variar el umbral de decisión."""
+    detector = detector or DeepPhaseDetector()
+    examples = examples or make_eval_set()
+    sweeps = {
+        "DeepPhase": _deep_sweep(detector, examples),
+        "STA/LTA": _sweep(lambda t: (lambda s: sta_lta_detect(s, threshold=t)), STALTA_THRESHOLDS, examples),
+    }
     return {
-        "events": n_events,
-        "noise_windows": n_noise,
-        "precision": round(tp / (tp + fp) if tp + fp else 0, 4),
-        "recall": round(tp / n_events, 4),
-        "f1": round(2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0, 4),
-        "mean_picking_error_s": round(float(np.mean(results["error"])) if results["error"] else 99, 4),
-        "mean_latency_ms": round(float(np.mean(results["latency"])), 4),
-        "true_positives": int(tp),
-        "false_positives": int(fp),
-        "business_value": round(business_value(int(tp), int(fp)), 2),
+        name: [{"threshold": row["threshold"], **_summary(row, params)} for row in rows]
+        for name, rows in sweeps.items()
     }
 
 
-def evaluate_baseline(*, seed: int = 2026, n_events: int = 30, n_noise: int = 30) -> dict[str, float | int]:
-    rng = np.random.default_rng(seed)
-    tp = fp = 0
-    errors: list[float] = []
-    for event in [True] * n_events + [False] * n_noise:
-        example = generate_example(rng, event=event)
-        detection = sta_lta_detect(example.signal)
-        if event:
-            tp += int(detection.detected)
-            if detection.detected and example.p_arrival is not None:
-                errors.append(abs(detection.sample - example.p_arrival) / 100)
-        else:
-            fp += int(detection.detected)
-    fn = n_events - tp
-    return {
-        "precision": round(tp / (tp + fp) if tp + fp else 0, 4),
-        "recall": round(tp / n_events, 4),
-        "f1": round(2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0, 4),
-        "mean_picking_error_s": round(float(np.mean(errors)) if errors else 99, 4),
-        "business_value": round(business_value(tp, fp), 2),
-        "true_positives": tp,
-        "false_positives": fp,
-    }
+def optimal_operating_point(curve: list[dict[str, float | int]]) -> dict[str, float | int]:
+    """Umbral con mayor valor neto; en empate se prefiere el umbral más alto."""
+    best = curve[0]
+    for row in curve[1:]:
+        if row["business_value"] >= best["business_value"]:
+            best = row
+    return best
+
+
+SENSITIVITY_FACTORS = (0.5, 0.8, 1.2, 1.5)  # -50 %, -20 %, +20 %, +50 %
+SENSITIVITY_FIELDS = ("value_per_second", "false_alarm_cost", "missed_event_cost")
+
+
+def sensitivity_analysis(
+    detector: DeepPhaseDetector | None = None,
+    *,
+    validation: list[SignalExample] | None = None,
+    test: list[SignalExample] | None = None,
+    base: ValueParams = DEFAULT_VALUE_PARAMS,
+    deep_threshold: float = 0.65,
+    baseline_threshold: float = 3.0,
+) -> list[dict[str, float | str]]:
+    """Cambia cada supuesto economico +-20 % y +-50 % y mide el efecto en la decision.
+
+    El umbral optimo de cada escenario se elige en ``validation`` y el valor se
+    reporta en ``test``, para no optimizar sobre los datos de prueba.
+    """
+    detector = detector or DeepPhaseDetector()
+    validation = validation or make_eval_set(seed=VALIDATION_SEED, n_events=60, n_noise=60)
+    test = test or make_eval_set()
+    val_rows = _deep_sweep(detector, validation)
+    test_rows = _deep_sweep(detector, test)
+    baseline_row = _sweep(lambda t: (lambda s: sta_lta_detect(s, threshold=t)), (baseline_threshold,), test)[0]
+    test_at_default = next(r for r in test_rows if r["threshold"] == deep_threshold)
+
+    rows: list[dict[str, float | str]] = []
+    for field in SENSITIVITY_FIELDS:
+        for factor in SENSITIVITY_FACTORS:
+            params = replace(base, **{field: getattr(base, field) * factor})
+            chosen = max(val_rows, key=lambda r: (round(_value(r, params), 2), r["threshold"]))
+            test_at_chosen = next(r for r in test_rows if r["threshold"] == chosen["threshold"])
+            deep_value = _value(test_at_default, params)
+            baseline_value = _value(baseline_row, params)
+            rows.append(
+                {
+                    "parameter": field,
+                    "change_pct": round((factor - 1) * 100),
+                    "deep_value_at_default_threshold": round(deep_value, 2),
+                    "optimal_threshold": chosen["threshold"],
+                    "deep_value_at_optimal_threshold": round(_value(test_at_chosen, params), 2),
+                    "baseline_value": round(baseline_value, 2),
+                    "advantage_vs_baseline": round(deep_value - baseline_value, 2),
+                }
+            )
+    return rows

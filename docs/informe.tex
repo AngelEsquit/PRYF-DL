@@ -3,7 +3,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[spanish,es-nodecimaldot]{babel}
 \usepackage[margin=2.1cm]{geometry}
-\usepackage{booktabs,tabularx,xcolor,hyperref,enumitem,listings,fancyhdr}
+\usepackage{booktabs,tabularx,xcolor,hyperref,enumitem,listings,fancyhdr,graphicx}
 \hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
 \pagestyle{fancy}\fancyhead{}\fancyfoot{}\fancyfoot[C]{\thepage}
 \setlength{\parskip}{.4em}\setlength{\parindent}{0pt}
@@ -84,7 +84,8 @@ CNN 1-D o fine-tuning de un picker preentrenado con STEAD.
 El baseline es STA/LTA: compara la energía media de una ventana corta de 0.25 s
 contra una larga de 3 s y alerta cuando el cociente supera 3. El modelo final es
 DeepPhase, un MLP de dos capas ocultas que estima $P(P\mid x_t)$. La inferencia
-selecciona la primera muestra cuyo valor supera el umbral 0.65.
+selecciona la primera muestra cuyo valor supera el umbral de decisión, que se
+elige por valor de negocio en un conjunto de validación (0.85; ver sección~\ref{sec:valor}).
 
 El problema es de deep learning supervisado sobre series temporales: el modelo
 debe producir una decisión numérica auditable. La experiencia de usuario comunica probabilidad,
@@ -99,36 +100,107 @@ para validar con STEAD se debe dividir por evento y estación. Se reportan:
 \item \textbf{Error de picking:} $|t_{\mathrm{pred}}-t_P|$ en segundos.
 \item \textbf{Precisión/recall/F1:} detección correcta de ventanas con evento.
 \item \textbf{Latencia:} tiempo de inferencia del detector.
-\item \textbf{Valor:} $V=TP\cdot a\cdot v_s-FP\cdot c_{fa}$, con $a=4$ s,
-  $v_s=\$1000$ por segundo y $c_{fa}=\$2500$ por falsa alarma.
+\item \textbf{Valor:} función de la sección~\ref{sec:valor}, con costos explícitos de
+  falsas alarmas, eventos no detectados y operación.
 \end{itemize}
+La división es de tres conjuntos independientes: entrenamiento (semilla 23361),
+validación de 120 ventanas (semilla 777), donde se elige el umbral por valor, y
+prueba de 60 ventanas (semilla 2026), donde se reportan los resultados.
 La evaluación se ejecuta con \texttt{.venv/bin/python src/evaluate.py} y guarda
 \texttt{results/metrics.json}; así no se reportan números escritos a mano.
 
 \begin{table}[h]
 \centering
-\caption{Métricas que genera la ejecución reproducible.}
-\begin{tabular}{lccccc}
+\caption{Métricas en el conjunto de prueba, cada sistema en el umbral elegido por valor en validación.}
+\begin{tabular}{lcccccc}
 \toprule
-Sistema & Precisión & Recall & F1 & Error P (s) & Valor neto\\
+Sistema & Umbral & Precisión & Recall & F1 & Error P (s) & Valor neto\\
 \midrule
-STA/LTA & 0.6923 & 0.3000 & 0.4186 & 1.3744 & \$26,000\\
-DeepPhase & \textbf{0.8824} & \textbf{1.0000} & \textbf{0.9375} & \textbf{0.2270} & \textbf{\$110,000}\\
+STA/LTA & 1.5 & 0.5000 & 1.0000 & 0.6667 & 3.2743 & --\$16,960\\
+DeepPhase & 0.85 & \textbf{0.9375} & \textbf{1.0000} & \textbf{0.9677} & \textbf{0.1907} & \textbf{\$53,040}\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-La ejecución de referencia obtuvo además una latencia media de DeepPhase de
-aproximadamente 0.3 ms. DeepPhase supera al baseline en 0.5824 de recall y 0.5189 de F1,
-reduce el error medio de picking en 1.1474 s y produce \$84,000 adicionales de
-valor neto bajo los supuestos definidos. Estas cifras corresponden al conjunto
-sintético reproducible y no deben interpretarse como desempeño en producción.
+La latencia media de DeepPhase es de aproximadamente 0.4 ms y la anticipación
+media lograda es de 1.94 s antes de la onda S. Bajo los supuestos de la
+sección~\ref{sec:valor}, DeepPhase produce \$70,000 más de valor neto que
+STA/LTA en este conjunto. Estas cifras corresponden al conjunto sintético
+reproducible y no deben interpretarse como desempeño en producción.
 
 La implementación actual procesa ventanas completas; todavía no es un servicio
 de streaming causal. El dashboard permite cambiar el umbral. Un umbral menor puede aumentar recall y
 anticipación, pero también FP; uno mayor reduce falsos disparos y puede perder el
 inicio de un evento. La política correcta depende del costo real de detener una
-planta versus el costo del daño evitado.
+planta versus el costo del daño evitado, que es lo que formaliza la siguiente
+sección.
+
+\section{Modelo de valor}\label{sec:valor}
+\subsection{Función de valor}
+Para un conjunto de $N$ ventanas, el valor neto en USD es
+\[
+V = TP\cdot \bar a\cdot v_s \;-\; FP\cdot c_{fa} \;-\; FN\cdot c_{fn} \;-\; N\cdot c_{op},
+\]
+donde $\bar a$ es la anticipación media lograda (segundos entre la alerta y la
+llegada de S). La anticipación se mide por evento y se limita a $[0,\,t_S-t_P]$:
+una alerta anterior a P no es aviso útil y una posterior a S no aporta valor.
+
+\begin{table}[h]
+\centering
+\caption{Supuestos del modelo de valor. Todos son estimaciones, no datos medidos.}
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+Parámetro & Valor & Justificación\\
+\midrule
+$v_s$ & \$1,000/s & Pérdida evitada por segundo de aviso (paro de maquinaria, cierre de gas, aviso al personal) en una planta mediana.\\
+$c_{fa}$ & \$2,500 & Paro innecesario: producción detenida y reinicio.\\
+$c_{fn}$ & \$10,000 & Daño adicional de un evento sin aviso; 4 veces el costo de una falsa alarma.\\
+$c_{op}$ & \$1 por ventana & Cómputo y operación amortizados; inferencia de $\approx$0.4 ms.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Curva de valor y punto de operación}
+El valor se calcula para cada umbral (figura~\ref{fig:valor}). El umbral se
+elige maximizando el valor en el conjunto de validación, no la métrica técnica, y
+se reporta sobre el conjunto de prueba. Ambos conjuntos coinciden en 0.85 para
+DeepPhase. Entre 0.55 y 0.80 el valor es plano (\$48,040 en prueba) porque el
+número de falsas alarmas no cambia; a 0.85 se eliminan 2 falsas alarmas más sin
+perder eventos, y a 0.90 el recall cae a 0.73 y el valor se vuelve negativo
+(--\$42,060). El óptimo queda por tanto junto a un precipicio: en producción
+conviene un margen de seguridad.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{../results/value_curve.png}
+\caption{Valor neto en el conjunto de prueba al variar el umbral.}
+\label{fig:valor}
+\end{figure}
+
+\subsection{Análisis de sensibilidad}
+Cada supuesto se varió $\pm$20~\% y $\pm$50~\% manteniendo los demás. La tabla
+muestra el valor neto de DeepPhase en el umbral 0.85 (base: \$53,040).
+
+\begin{table}[h]
+\centering
+\caption{Valor neto de DeepPhase en prueba al variar cada supuesto.}
+\begin{tabular}{lrrrr}
+\toprule
+Supuesto & $-$50~\% & $-$20~\% & $+$20~\% & $+$50~\%\\
+\midrule
+$v_s$ (valor por segundo) & \$23,990 & \$41,420 & \$64,660 & \$82,090\\
+$c_{fa}$ (falsa alarma) & \$55,540 & \$54,040 & \$52,040 & \$50,540\\
+$c_{fn}$ (evento perdido) & \$53,040 & \$53,040 & \$53,040 & \$53,040\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El valor es sobre todo sensible a $v_s$, y su signo no cambia en ningún
+escenario. $c_{fn}$ no afecta a DeepPhase en 0.85 porque en prueba no deja
+eventos sin detectar, pero sí castiga a los umbrales más altos. El umbral
+óptimo elegido en validación se mantiene en 0.85 en los 12 escenarios. La
+ventaja de DeepPhase sobre STA/LTA se conserva positiva en todos (entre \$35,000
+y \$105,000).
 
 \section{Producto y experiencia de usuario}
 Se ejecuta con \texttt{streamlit run src/app.py}. El operador selecciona si la
