@@ -22,7 +22,7 @@
     "business_value": 53040.0,
     "events": 30,
     "noise_windows": 30,
-    "mean_latency_ms": 0.4448
+    "mean_latency_ms": 0.4752
   },
   "value_model": {
     "value_per_second": 1000.0,

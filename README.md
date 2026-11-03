@@ -39,6 +39,34 @@ El comando genera `results/metrics.json` (métricas, curva de valor y sensibilid
 validación controlada del pipeline; la integración con STEAD o FDSN/IRIS queda
 preparada como siguiente etapa y se documenta explícitamente en el informe.
 
+## Datos reales (STEAD) y validación local (FDSN/IRIS)
+
+Nada se descarga automáticamente. Los datos pesan decenas de GB y se obtienen por
+separado:
+
+1. **STEAD**: descarga `merged.csv` y `merged.hdf5` desde
+   <https://github.com/smousavi05/STEAD> (licencia CC BY 4.0; citar a Mousavi et al.,
+   2019, *IEEE Access*). SeisBench no los descarga por ti: su cargador `STEAD`
+   exige esos mismos archivos y convertirlos completos tarda horas.
+2. Instala las dependencias opcionales: `pip install -r requirements-data.txt`.
+3. Evalúa con un subconjunto (por defecto 3000 eventos y 3000 ventanas de ruido,
+   particionados **por evento**):
+
+```bash
+python src/evaluate.py --source stead --stead-dir RUTA/A/STEAD
+python src/evaluate.py --source stead --stead-dir RUTA/A/STEAD --fdsn   # + validación FDSN
+```
+
+Las ventanas procesadas se guardan en `data/` (ignorado por git), así que las
+siguientes ejecuciones no vuelven a leer el HDF5. Los resultados reales se
+escriben en `results/metrics_stead.json` y `results/value_curve_stead.png`, sin
+tocar los sintéticos. El backend `--stead-backend seisbench` existe pero solo
+conviene si ya tienes la caché de SeisBench.
+
+La validación FDSN usa eventos de Guatemala y región (IRIS), y toma las llegadas P
+y S **teóricas** (TauP, iasp91), no picks manuales; es una validación gruesa de
+transferencia.
+
 ## Reproducibilidad y uso responsable
 
 La semilla, la tasa de muestreo, la arquitectura y el umbral están definidos en

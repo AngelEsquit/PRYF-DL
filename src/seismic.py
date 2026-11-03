@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 from scipy.signal import butter, filtfilt
@@ -21,6 +21,7 @@ class SignalExample:
     p_arrival: int | None
     s_arrival: int | None
     label: int
+    meta: dict = field(default_factory=dict, compare=False)  # origen, SNR, estación, etc.
 
 
 @dataclass(frozen=True)
@@ -72,15 +73,12 @@ def _features(signal: np.ndarray, window: int = 20) -> np.ndarray:
     return np.column_stack((energy, envelope, rolling, gradient))
 
 
-def make_training_data(
-    seed: int = 23361, n_events: int = 100, n_noise: int = 100
-) -> tuple[np.ndarray, np.ndarray]:
-    rng = np.random.default_rng(seed)
+def training_arrays(examples: list[SignalExample]) -> tuple[np.ndarray, np.ndarray]:
+    """Convierte ventanas etiquetadas en filas (características, etiqueta P/no P)."""
     rows, labels = [], []
-    for event in [True] * n_events + [False] * n_noise:
-        example = generate_example(rng, event=event)
+    for example in examples:
         features = _features(example.signal)
-        if event:
+        if example.label:
             start = max(0, example.p_arrival - 25)
             end = min(len(features), example.p_arrival + 25)
             rows.extend(features[start:end])
@@ -94,11 +92,21 @@ def make_training_data(
     return np.asarray(rows, dtype=np.float32), np.asarray(labels, dtype=np.int8)
 
 
+def make_training_data(
+    seed: int = 23361, n_events: int = 100, n_noise: int = 100
+) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    examples = [generate_example(rng, event=event) for event in [True] * n_events + [False] * n_noise]
+    return training_arrays(examples)
+
+
 class DeepPhaseDetector:
     """Detector MLP de dos capas, inspirado en un picker de fases."""
 
-    def __init__(self, seed: int = 23361) -> None:
+    def __init__(self, seed: int = 23361, train_examples: list[SignalExample] | None = None) -> None:
+        """Entrena con ``train_examples`` (p. ej. STEAD) o, si no hay, con señales sintéticas."""
         self.seed = seed
+        self.train_examples = train_examples
         self.model = MLPClassifier(
             hidden_layer_sizes=(32, 16),
             activation="relu",
@@ -111,7 +119,10 @@ class DeepPhaseDetector:
         self._fit()
 
     def _fit(self) -> None:
-        x, y = make_training_data(self.seed)
+        if self.train_examples is not None:
+            x, y = training_arrays(self.train_examples)
+        else:
+            x, y = make_training_data(self.seed)
         self.model.fit(x, y)
 
     def detect(self, signal: np.ndarray, threshold: float = 0.65) -> Detection:
@@ -285,12 +296,14 @@ def evaluate_detector(
     n_noise: int = 30,
     threshold: float = 0.65,
     params: ValueParams = DEFAULT_VALUE_PARAMS,
+    examples: list[SignalExample] | None = None,
 ) -> dict[str, float | int]:
     detector = detector or DeepPhaseDetector()
-    examples = make_eval_set(seed=seed, n_events=n_events, n_noise=n_noise)
+    examples = examples or make_eval_set(seed=seed, n_events=n_events, n_noise=n_noise)
     outcome = _outcome(lambda s: detector.detect(s, threshold=threshold), examples)
     result = _summary(outcome, params)
-    result.update(events=n_events, noise_windows=n_noise, mean_latency_ms=round(outcome["mean_latency"], 4))
+    events = sum(e.label for e in examples)
+    result.update(events=events, noise_windows=len(examples) - events, mean_latency_ms=round(outcome["mean_latency"], 4))
     return result
 
 
@@ -301,8 +314,9 @@ def evaluate_baseline(
     n_noise: int = 30,
     threshold: float = 3.0,
     params: ValueParams = DEFAULT_VALUE_PARAMS,
+    examples: list[SignalExample] | None = None,
 ) -> dict[str, float | int]:
-    examples = make_eval_set(seed=seed, n_events=n_events, n_noise=n_noise)
+    examples = examples or make_eval_set(seed=seed, n_events=n_events, n_noise=n_noise)
     outcome = _outcome(lambda s: sta_lta_detect(s, threshold=threshold), examples)
     return _summary(outcome, params)
 

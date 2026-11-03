@@ -1,0 +1,6 @@
+# Dependencias opcionales para datos reales (STEAD y FDSN/IRIS).
+-r requirements.txt
+pandas>=2.2
+h5py>=3.11
+obspy>=1.4      # validación local con FDSN/IRIS (TauP, clientes FDSN)
+seisbench>=0.8  # solo si usas --stead-backend seisbench (instala PyTorch)
