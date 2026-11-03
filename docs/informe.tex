@@ -86,9 +86,8 @@ contra una larga de 3 s y alerta cuando el cociente supera 3. El modelo final es
 DeepPhase, un MLP de dos capas ocultas que estima $P(P\mid x_t)$. La inferencia
 selecciona la primera muestra cuyo valor supera el umbral 0.65.
 
-No se usa un LLM generativo: la propuesta final es un caso de deep learning
-supervisado sobre series temporales, y el modelo debe producir una decisión
-numérica auditable, no texto. La experiencia de usuario comunica probabilidad,
+El problema es de deep learning supervisado sobre series temporales: el modelo
+debe producir una decisión numérica auditable. La experiencia de usuario comunica probabilidad,
 latencia, detector clásico y segundos hasta S. Una probabilidad no se presenta
 como certeza.
 
@@ -173,7 +172,7 @@ señal $\rightarrow$ procesamiento $\rightarrow$ modelo $\rightarrow$ alerta
 $\rightarrow$ valor. La comparación STA/LTA/DeepPhase y el costo explícito de
 falsas alarmas hacen visible que el mejor modelo no se elige únicamente por
 accuracy. El código está en:
-\url{https://github.com/Javier-Espana/PRY3-DL}
+\url{https://github.com/AngelEsquit/PRYF-DL}
 
 \begin{lstlisting}
 python3 -m venv .venv

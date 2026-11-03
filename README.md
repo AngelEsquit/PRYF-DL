@@ -24,7 +24,7 @@ python3 -m venv .venv
 .venv/bin/streamlit run src/app.py
 ```
 
-La demo funciona sin API externa. Para reproducir las métricas:
+Para reproducir las métricas:
 
 ```bash
 .venv/bin/pytest -q
