@@ -34,12 +34,14 @@ destructiva. El usuario objetivo es el operador de una instalación con sensores
 sísmicos y acciones automáticas definidas; el producto le entrega una alerta,
 probabilidad, instante estimado y anticipación.
 
-El problema no se resuelve bien con un umbral fijo únicamente: ruido cultural,
-variación de estación y amplitud hacen que STA/LTA produzca detecciones tardías o
-falsas alarmas. Un modelo profundo aprende patrones temporales de la señal y
-puede combinar las tres componentes. No se afirma que el prototipo sea un
-sistema certificado: su objetivo académico es medir el intercambio entre calidad
-técnica y valor de negocio.
+La hipótesis de partida es que un umbral fijo sobre la energía (STA/LTA) se
+degrada con ruido cultural, variación de estación y amplitud, y que un modelo
+profundo, que aprende patrones temporales y combina las tres componentes,
+compensa esa degradación. Esta hipótesis se contrasta con un baseline justo en la
+sección de evaluación y, como se verá, \textbf{no se confirma} sobre los datos
+sintéticos actuales. No se afirma que el prototipo sea un sistema certificado: su
+objetivo académico es medir el intercambio entre calidad técnica y valor de
+negocio.
 
 \textbf{Criterios de éxito:} recall $\geq 0.80$ en ventanas con evento; precisión
 $\geq 0.80$ en el punto de operación elegido; error absoluto medio de picking
@@ -81,8 +83,11 @@ a PhaseNet/EQTransformer; la siguiente iteración sustituye el extractor por una
 CNN 1-D o fine-tuning de un picker preentrenado con STEAD.
 
 \section{Modelo, baseline y decisión de umbral}
-El baseline es STA/LTA: compara la energía media de una ventana corta de 0.25 s
-contra una larga de 3 s y alerta cuando el cociente supera 3. El modelo final es
+El baseline es STA/LTA causal: compara la energía media de una ventana corta de
+0.25 s contra una larga de 3 s, ambas calculadas solo con muestras pasadas, y
+alerta cuando el cociente supera un umbral (2.0, elegido por valor en
+validación). Igual que DeepPhase, ignora el primer segundo, afectado por
+transitorios del filtro. El modelo evaluado es
 DeepPhase, un MLP de dos capas ocultas que estima $P(P\mid x_t)$. La inferencia
 selecciona la primera muestra cuyo valor supera el umbral de decisión, que se
 elige por valor de negocio en un conjunto de validación (0.85; ver sección~\ref{sec:valor}).
@@ -98,7 +103,9 @@ semillas y distribuciones documentadas. La división conceptual es por ventana;
 para validar con STEAD se debe dividir por evento y estación. Se reportan:
 \begin{itemize}[leftmargin=*]
 \item \textbf{Error de picking:} $|t_{\mathrm{pred}}-t_P|$ en segundos.
-\item \textbf{Precisión/recall/F1:} detección correcta de ventanas con evento.
+\item \textbf{Precisión/recall/F1:} un acierto exige aviso útil: alerta no
+  anterior a $t_P-0.5$ s y anterior a la llegada de S. Una alerta tardía o
+  prematura cuenta como evento no detectado (FN).
 \item \textbf{Latencia:} tiempo de inferencia del detector.
 \item \textbf{Valor:} función de la sección~\ref{sec:valor}, con costos explícitos de
   falsas alarmas, eventos no detectados y operación.
@@ -116,17 +123,21 @@ La evaluación se ejecuta con \texttt{.venv/bin/python src/evaluate.py} y guarda
 \toprule
 Sistema & Umbral & Precisión & Recall & F1 & Error P (s) & Valor neto\\
 \midrule
-STA/LTA & 1.5 & 0.5000 & 1.0000 & 0.6667 & 3.2743 & --\$16,960\\
-DeepPhase & 0.85 & \textbf{0.9375} & \textbf{1.0000} & \textbf{0.9677} & \textbf{0.1907} & \textbf{\$53,040}\\
+STA/LTA & 2.0 & \textbf{1.0000} & \textbf{1.0000} & \textbf{1.0000} & \textbf{0.0937} & \textbf{\$57,980}\\
+DeepPhase & 0.85 & 0.9375 & 1.0000 & 0.9677 & 0.1907 & \$53,040\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 La latencia media de DeepPhase es de aproximadamente 0.4 ms y la anticipación
-media lograda es de 1.94 s antes de la onda S. Bajo los supuestos de la
-sección~\ref{sec:valor}, DeepPhase produce \$70,000 más de valor neto que
-STA/LTA en este conjunto. Estas cifras corresponden al conjunto sintético
-reproducible y no deben interpretarse como desempeño en producción.
+media lograda es de 1.94 s antes de la onda S en ambos sistemas. Bajo los
+supuestos de la sección~\ref{sec:valor}, \textbf{STA/LTA produce \$4,940 más de
+valor neto que DeepPhase} (dos falsas alarmas de DeepPhase cuestan \$5,000). Con
+un baseline justo (causal y con la misma exclusión inicial), el modelo profundo
+no mejora al clásico en estos datos: la señal sintética tiene una relación
+señal/ruido alta y una llegada P de energía clara, por lo que un cociente de
+energías ya la separa casi perfectamente. Estas cifras corresponden al conjunto
+sintético reproducible y no deben interpretarse como desempeño en producción.
 
 La implementación actual procesa ventanas completas; todavía no es un servicio
 de streaming causal. El dashboard permite cambiar el umbral. Un umbral menor puede aumentar recall y
@@ -199,8 +210,9 @@ El valor es sobre todo sensible a $v_s$, y su signo no cambia en ningún
 escenario. $c_{fn}$ no afecta a DeepPhase en 0.85 porque en prueba no deja
 eventos sin detectar, pero sí castiga a los umbrales más altos. El umbral
 óptimo elegido en validación se mantiene en 0.85 en los 12 escenarios. La
-ventaja de DeepPhase sobre STA/LTA se conserva positiva en todos (entre \$35,000
-y \$105,000).
+diferencia con STA/LTA (que en su umbral óptimo de 2.0 no tiene falsos negativos
+ni falsas alarmas) es negativa para DeepPhase en todos los escenarios, entre
+--\$2,440 y --\$7,440: ningún supuesto económico razonable cambia el orden.
 
 \section{Producto y experiencia de usuario}
 Se ejecuta con \texttt{streamlit run src/app.py}. El operador selecciona si la
@@ -241,9 +253,10 @@ maquinaria.
 \section{Conclusión y reproducción}
 AlertaP convierte la propuesta en un producto ejecutable de extremo a extremo:
 señal $\rightarrow$ procesamiento $\rightarrow$ modelo $\rightarrow$ alerta
-$\rightarrow$ valor. La comparación STA/LTA/DeepPhase y el costo explícito de
-falsas alarmas hacen visible que el mejor modelo no se elige únicamente por
-accuracy. El código está en:
+$\rightarrow$ valor. La comparación justa STA/LTA/DeepPhase con costos explícitos
+muestra que, en datos sintéticos de alta señal/ruido, el baseline clásico basta;
+el valor del deep learning debe demostrarse con datos reales (STEAD) o
+condiciones de ruido más exigentes, que es el trabajo pendiente. El código está en:
 \url{https://github.com/AngelEsquit/PRYF-DL}
 
 \begin{lstlisting}

@@ -10,6 +10,10 @@ import numpy as np
 from scipy.signal import butter, filtfilt
 from sklearn.neural_network import MLPClassifier
 
+# Ambos detectores ignoran el primer segundo: el filtro de fase cero y la
+# ventana de aprendizaje de STA/LTA producen transitorios que no son llegadas.
+WARMUP_SAMPLES = 100
+
 
 @dataclass(frozen=True)
 class SignalExample:
@@ -116,7 +120,7 @@ class DeepPhaseDetector:
         # The first second is excluded because zero-phase filtering creates edge
         # transients that are not physically observable arrivals.
         candidates = np.flatnonzero(probabilities >= threshold)
-        candidates = candidates[candidates >= 100]
+        candidates = candidates[candidates >= WARMUP_SAMPLES]
         sample = int(candidates[0]) if len(candidates) else None
         return Detection(
             sample is not None,
@@ -126,15 +130,26 @@ class DeepPhaseDetector:
         )
 
 
+def _trailing_mean(x: np.ndarray, n: int) -> np.ndarray:
+    """Media móvil causal (solo muestras pasadas); al inicio usa la ventana disponible."""
+    cumulative = np.concatenate(([0.0], np.cumsum(x)))
+    end = np.arange(1, len(x) + 1)
+    start = np.maximum(0, end - n)
+    return (cumulative[end] - cumulative[start]) / (end - start)
+
+
 def sta_lta_detect(signal: np.ndarray, sample_rate: float = 100.0, threshold: float = 3.0) -> Detection:
-    """Baseline clásico STA/LTA con primera excedencia del cociente."""
+    """Baseline clásico STA/LTA causal con primera excedencia del cociente.
+
+    Usa ventanas hacia atrás (STA 0.25 s, LTA 3 s) y la misma exclusión inicial
+    que DeepPhase, para que la comparación sea justa.
+    """
     started = time.perf_counter()
     energy = np.sqrt(np.mean(signal**2, axis=1)) + 1e-8
     short = max(2, int(0.25 * sample_rate))
     long = max(short + 1, int(3.0 * sample_rate))
-    sta = np.convolve(energy, np.ones(short) / short, mode="same")
-    lta = np.convolve(energy, np.ones(long) / long, mode="same") + 1e-8
-    ratio = sta / lta
+    ratio = _trailing_mean(energy, short) / (_trailing_mean(energy, long) + 1e-8)
+    ratio[:WARMUP_SAMPLES] = 0.0
     candidates = np.flatnonzero(ratio > threshold)
     sample = int(candidates[0]) if len(candidates) else None
     return Detection(
@@ -150,6 +165,7 @@ def sta_lta_detect(signal: np.ndarray, sample_rate: float = 100.0, threshold: fl
 # ---------------------------------------------------------------------------
 
 SAMPLE_RATE = 100.0
+PICK_TOLERANCE_S = 0.5  # una alerta antes de P - tolerancia es un disparo prematuro
 VALIDATION_SEED = 777  # distinto de la semilla de entrenamiento (23361) y de prueba (2026)
 MEAN_S_MINUS_P_S = 1.9  # media de U(1.0, 2.8) s del generador sintético
 
@@ -198,7 +214,7 @@ def make_eval_set(*, seed: int = 2026, n_events: int = 30, n_noise: int = 30) ->
     return [generate_example(rng, event=event) for event in [True] * n_events + [False] * n_noise]
 
 
-def _outcome(detect: Callable[[np.ndarray], Detection], examples: list[SignalExample]) -> dict[str, float]:
+def _outcome(detect: Callable[[np.ndarray], Detection], examples: list[SignalExample]) -> dict[str, float | None]:
     """Cuenta TP/FP/FN y acumula error de picking, anticipación y latencia."""
     tp = fp = fn = 0
     errors: list[float] = []
@@ -209,12 +225,17 @@ def _outcome(detect: Callable[[np.ndarray], Detection], examples: list[SignalExa
         latencies.append(detection.latency_ms)
         if example.label:
             if detection.detected:
-                tp += 1
                 errors.append(abs(detection.sample - example.p_arrival) / SAMPLE_RATE)
-                # La anticipación útil no puede superar S-P ni ser negativa.
+            # Solo es un acierto una alerta con aviso útil: no prematura (antes de
+            # P - tolerancia) y antes de la llegada de S. Si no, el evento se
+            # considera no detectado, aunque haya sonado una alerta.
+            earliest = example.p_arrival - PICK_TOLERANCE_S * SAMPLE_RATE
+            if detection.detected and earliest <= detection.sample < example.s_arrival:
+                tp += 1
+                # La anticipación útil no puede superar S-P.
                 advance = (example.s_arrival - detection.sample) / SAMPLE_RATE
                 max_advance = (example.s_arrival - example.p_arrival) / SAMPLE_RATE
-                advances.append(float(np.clip(advance, 0.0, max_advance)))
+                advances.append(float(min(advance, max_advance)))
             else:
                 fn += 1
         elif detection.detected:
@@ -224,7 +245,7 @@ def _outcome(detect: Callable[[np.ndarray], Detection], examples: list[SignalExa
         "fp": fp,
         "fn": fn,
         "n_windows": len(examples),
-        "mean_error": float(np.mean(errors)) if errors else 99.0,
+        "mean_error": float(np.mean(errors)) if errors else None,
         "mean_advance": float(np.mean(advances)) if advances else 0.0,
         "mean_latency": float(np.mean(latencies)),
     }
@@ -247,7 +268,7 @@ def _summary(outcome: dict[str, float], params: ValueParams) -> dict[str, float 
         "precision": round(tp / (tp + fp) if tp + fp else 0, 4),
         "recall": round(tp / (tp + fn) if tp + fn else 0, 4),
         "f1": round(2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0, 4),
-        "mean_picking_error_s": round(outcome["mean_error"], 4),
+        "mean_picking_error_s": None if outcome["mean_error"] is None else round(outcome["mean_error"], 4),
         "mean_advance_s": round(outcome["mean_advance"], 4),
         "true_positives": tp,
         "false_positives": fp,

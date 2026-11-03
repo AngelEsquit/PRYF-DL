@@ -6,7 +6,9 @@ from src.seismic import (
     SENSITIVITY_FACTORS,
     VALIDATION_SEED,
     DeepPhaseDetector,
+    Detection,
     ValueParams,
+    _outcome,
     business_value,
     generate_example,
     make_eval_set,
@@ -76,3 +78,35 @@ def test_validation_and_test_sets_differ():
     a = make_eval_set(seed=VALIDATION_SEED, n_events=2, n_noise=2)
     b = make_eval_set(n_events=2, n_noise=2)
     assert not np.allclose(a[0].signal, b[0].signal)
+
+
+def test_sta_lta_is_causal():
+    """Cambiar muestras futuras no debe alterar la alerta ya emitida."""
+    example = generate_example(np.random.default_rng(11), event=True)
+    first = sta_lta_detect(example.signal, threshold=2.0)
+    assert first.detected
+    cut = first.sample + 1
+    truncated = sta_lta_detect(example.signal[:cut], threshold=2.0)
+    assert truncated.sample == first.sample
+
+
+def test_sta_lta_ignores_warmup_window():
+    signal = np.zeros((1200, 3), dtype=np.float32)
+    signal[:50] = 10.0  # transitorio en el primer segundo
+    assert not sta_lta_detect(signal, threshold=2.0).detected
+
+
+def _outcome_with_sample(sample):
+    example = generate_example(np.random.default_rng(4), event=True)
+    detection = Detection(sample is not None, sample, 1.0, 0.0)
+    return _outcome(lambda _signal: detection, [example]), example
+
+
+def test_late_or_premature_alert_counts_as_missed_event():
+    _, example = _outcome_with_sample(None)
+    late, _ = _outcome_with_sample(example.s_arrival + 10)
+    premature, _ = _outcome_with_sample(max(0, example.p_arrival - 100))
+    on_time, _ = _outcome_with_sample(example.p_arrival + 20)
+    assert (late["tp"], late["fn"]) == (0, 1)
+    assert (premature["tp"], premature["fn"]) == (0, 1)
+    assert (on_time["tp"], on_time["fn"]) == (1, 0)
