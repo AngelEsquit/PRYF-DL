@@ -1,21 +1,38 @@
 """Dashboard Streamlit para demostrar AlertaP."""
 
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 
-from seismic import DeepPhaseDetector, generate_example, sta_lta_detect
+from seismic import DeepPhaseDetector, PyTorchPhaseDetector, generate_example, sta_lta_detect
 
 st.set_page_config(page_title="AlertaP", page_icon="🌋", layout="wide")
 st.title("🌋 AlertaP")
 st.subheader("Detección temprana de la onda P antes de la onda S")
 st.caption("Prototipo educativo: no sustituye un sistema sismológico certificado.")
 
+has_pytorch_ckpt = Path("checkpoints/best_model.pt").exists()
+
 @st.cache_resource
-def load_detector() -> DeepPhaseDetector:
+def load_deep_phase() -> DeepPhaseDetector:
     return DeepPhaseDetector()
 
-detector = load_detector()
+@st.cache_resource
+def load_pytorch_model(path: str) -> PyTorchPhaseDetector:
+    return PyTorchPhaseDetector(checkpoint_path=path)
+
+options = ["DeepPhase (MLP clásico)"]
+if has_pytorch_ckpt:
+    options.append("ConvPhaseNet / DeepPhaseNet (PyTorch GPU)")
+
+model_choice = st.sidebar.selectbox("Modelo a evaluar:", options)
+
+if model_choice.startswith("ConvPhaseNet"):
+    detector = load_pytorch_model("checkpoints/best_model.pt")
+else:
+    detector = load_deep_phase()
+
 col1, col2 = st.columns(2)
 with col1:
     event = st.toggle("Simular evento sísmico", value=True)

@@ -141,6 +141,77 @@ class DeepPhaseDetector:
         )
 
 
+class PyTorchPhaseDetector:
+    """Detector de Deep Learning basado en PyTorch (soporta CUDA / GPU RTX 5050 y CPU).
+
+    Permite cargar checkpoints entrenados con `src/train.py` (ej. `best_model.pt`)
+    y realizar inferencia optimizada con baja latencia.
+    """
+
+    def __init__(
+        self,
+        checkpoint_path: str | None = None,
+        model_name: str = "conv1d",
+        device: str = "auto",
+    ) -> None:
+        from pathlib import Path
+        import torch
+        try:
+            from .models import build_model
+        except ImportError:
+            from models import build_model
+
+        if device == "auto":
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
+
+        self.model_name = model_name.lower()
+        self.checkpoint_path = checkpoint_path
+
+        if checkpoint_path is not None and Path(checkpoint_path).exists():
+            ckpt = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+            self.model_name = ckpt.get("model_name") or ckpt.get("config", {}).get("model", self.model_name)
+            kwargs = ckpt.get("model_kwargs", {})
+            self.model = build_model(self.model_name, **kwargs).to(self.device)
+            self.model.load_state_dict(ckpt["model_state_dict"])
+        else:
+            self.model = build_model(self.model_name).to(self.device)
+
+        self.model.eval()
+
+    def detect(self, signal: np.ndarray, threshold: float = 0.50) -> Detection:
+        import torch
+
+        started = time.perf_counter()
+        with torch.no_grad():
+            if self.model_name in ("conv1d", "phasenet", "convphasenet", "convphasenet1d"):
+                # Input: (1, 3, T)
+                x = (
+                    torch.from_numpy(np.ascontiguousarray(signal.T, dtype=np.float32))
+                    .unsqueeze(0)
+                    .to(self.device)
+                )
+            else:
+                # Input: (1, T, 4)
+                feat = _features(signal).astype(np.float32)
+                x = torch.from_numpy(feat).unsqueeze(0).to(self.device)
+
+            logits = self.model(x)
+            probabilities = torch.sigmoid(logits).squeeze(0).cpu().numpy()
+
+        candidates = np.flatnonzero(probabilities >= threshold)
+        candidates = candidates[candidates >= WARMUP_SAMPLES]
+        sample = int(candidates[0]) if len(candidates) else None
+        max_prob = float(probabilities.max()) if len(probabilities) else 0.0
+        return Detection(
+            sample is not None,
+            sample,
+            max_prob,
+            round((time.perf_counter() - started) * 1000, 3),
+        )
+
+
 def _trailing_mean(x: np.ndarray, n: int) -> np.ndarray:
     """Media móvil causal (solo muestras pasadas); al inicio usa la ventana disponible."""
     cumulative = np.concatenate(([0.0], np.cumsum(x)))

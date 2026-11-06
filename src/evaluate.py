@@ -19,6 +19,7 @@ from seismic import (
     DEFAULT_VALUE_PARAMS,
     VALIDATION_SEED,
     DeepPhaseDetector,
+    PyTorchPhaseDetector,
     evaluate_baseline,
     evaluate_detector,
     make_eval_set,
@@ -94,13 +95,21 @@ def main() -> None:
     parser.add_argument("--cache", default="data/stead_subset.npz", help="Caché de ventanas procesadas")
     parser.add_argument("--fdsn", action="store_true", help="Agregar validación local con FDSN/IRIS")
     parser.add_argument("--fdsn-cache", default="data/fdsn_events.npz")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Ruta a checkpoint PyTorch entrenado (.pt)")
     args = parser.parse_args()
+
+    # Selección del detector: PyTorch si hay checkpoint, o clásico DeepPhase por defecto
+    if args.checkpoint:
+        detector = PyTorchPhaseDetector(checkpoint_path=args.checkpoint)
+        print(f"[*] Evaluando modelo PyTorch ({detector.model_name}) cargado desde: {args.checkpoint}")
+    else:
+        detector = None
 
     if args.source == "synthetic":
         if args.fdsn:
             parser.error("--fdsn requiere --source stead")
         run(
-            DeepPhaseDetector(),
+            detector or DeepPhaseDetector(),
             make_eval_set(seed=VALIDATION_SEED, n_events=60, n_noise=60),
             make_eval_set(),
         )
@@ -117,7 +126,8 @@ def main() -> None:
     )
     for name, examples in splits.items():
         print(f"{name}: {sum(e.label for e in examples)} eventos, {sum(1 - e.label for e in examples)} ruido")
-    detector = DeepPhaseDetector(train_examples=splits["train"])
+    if detector is None:
+        detector = DeepPhaseDetector(train_examples=splits["train"])
     fdsn_events = fetch_fdsn_examples(cache=args.fdsn_cache) if args.fdsn else None
     run(detector, splits["dev"], splits["test"], suffix="_stead", fdsn_events=fdsn_events)
 

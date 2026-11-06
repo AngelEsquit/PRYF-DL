@@ -13,3 +13,8 @@ __pycache__/
 data/raw/
 models/
 data/
+checkpoints/*.pt
+checkpoints/*.tmp
+checkpoints/*.csv
+checkpoints/*.png
+

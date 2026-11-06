@@ -67,6 +67,43 @@ La validación FDSN usa eventos de Guatemala y región (IRIS), y toma las llegad
 y S **teóricas** (TauP, iasp91), no picks manuales; es una validación gruesa de
 transferencia.
 
+## Entrenamiento con PyTorch y Checkpointing (GPU RTX 5050)
+
+El proyecto incluye un pipeline completo de Deep Learning en PyTorch con soporte para aceleración por GPU (CUDA), precisión mixta (AMP) y un sistema robusto de guardado atómico de checkpoints tolerante a apagados o interrupciones.
+
+### Iniciar entrenamiento:
+```bash
+# Modelo Convolucional 1D (por defecto) con datos sintéticos:
+.venv/bin/python src/train.py --model conv1d --epochs 50 --batch-size 64
+
+# O modelo MLP profundo en GPU:
+.venv/bin/python src/train.py --model mlp --epochs 50 --batch-size 64
+
+# Con dataset real STEAD (si tienes los datos descargados):
+.venv/bin/python src/train.py --source stead --stead-dir RUTA/A/STEAD --epochs 50
+```
+
+### Reanudar entrenamiento si se apaga la computadora:
+Si debes apagar la computadora o se interrumpe la sesión, simplemente vuelve a ejecutar:
+```bash
+.venv/bin/python src/train.py --resume checkpoints/checkpoint_last.pt
+```
+O con auto-resume (detecta el último checkpoint automáticamente si existe en `checkpoints/`):
+```bash
+.venv/bin/python src/train.py --resume-auto
+```
+
+Durante el entrenamiento se generan en `checkpoints/`:
+- `checkpoint_last.pt`: estado completo actualizado atómicamente tras cada época.
+- `best_model.pt`: mejor modelo según la función de valor económico ($).
+- `history.csv`: registro continuo de pérdidas, métricas y valor neto por época.
+- `history.png`: curvas de pérdida, F1 y valor de negocio.
+
+### Evaluar el modelo entrenado:
+```bash
+.venv/bin/python src/evaluate.py --checkpoint checkpoints/best_model.pt
+```
+
 ## Reproducibilidad y uso responsable
 
 La semilla, la tasa de muestreo, la arquitectura y el umbral están definidos en
