@@ -416,7 +416,11 @@ def train(args: argparse.Namespace) -> None:
         interrupted = True
 
     signal.signal(signal.SIGINT, handle_sigint)
-    signal.signal(signal.SIGTERM, handle_sigint)
+    if hasattr(signal, "SIGTERM"):
+        try:
+            signal.signal(signal.SIGTERM, handle_sigint)
+        except (ValueError, OSError):
+            pass
 
     # 6. Bucle de entrenamiento por épocas
     print(f"\nIniciando entrenamiento: épocas {start_epoch} -> {args.epochs}...\n")
@@ -588,7 +592,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--epochs", type=int, default=40, help="Número total de épocas a entrenar")
     p.add_argument("--batch-size", type=int, default=64, help="Tamaño de lote (ideal 64 o 128 para RTX 5050 8GB)")
     p.add_argument("--lr", type=float, default=1e-3, help="Learning rate inicial")
-    p.add_argument("--workers", type=int, default=2, help="Subprocesos para DataLoader")
+    default_workers = 0 if sys.platform == "win32" else 2
+    p.add_argument("--workers", type=int, default=default_workers, help="Subprocesos para DataLoader (0 en Windows)")
 
     # Hardware y optimización
     p.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"], help="Dispositivo de cómputo")
