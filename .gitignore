@@ -12,9 +12,15 @@ __pycache__/
 *.fdb_latexmk
 data/raw/
 models/
-data/
-checkpoints/*.pt
+data/merged.zip
+data/merged.hdf5
+data/merge.hdf5
+data/merged.csv
+data/merge.csv
+data/*.npz
+checkpoints/checkpoint_*.pt
+checkpoints_stead/checkpoint_*.pt
 checkpoints/*.tmp
-checkpoints/*.csv
-checkpoints/*.png
+checkpoints_stead/*.tmp
+
 

@@ -504,7 +504,7 @@ def train(args: argparse.Namespace) -> None:
         }
         history.append(row)
 
-        star = " ★ BEST" if is_best else ""
+        star = " * BEST" if is_best else ""
         print(
             f"{epoch:^7d} | {train_loss:^10.4f} | {val_metrics['val_loss']:^10.4f} | "
             f"{val_metrics['f1']:^8.4f} | {val_metrics['picking_error_s']:^12.4f} | "

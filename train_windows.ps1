@@ -1,36 +1,48 @@
-# Script de PowerShell para entrenar AlertaP en Windows con GPU RTX 5050
+# Script de PowerShell para entrenar AlertaP en Windows con GPU RTX 5050 y datos reales STEAD
 param (
     [string]$model = "conv1d",
-    [int]$epochs = 50,
+    [int]$epochs = 60,
     [int]$batchSize = 64,
-    [string]$source = "synthetic",
-    [string]$steadDir = "",
+    [string]$source = "stead",
+    [string]$steadDir = "data",
+    [int]$nTrainEvents = 10000,
+    [int]$nTrainNoise = 10000,
+    [string]$checkpointDir = "checkpoints_stead",
     [switch]$resume
 )
 
 $venvPython = ".\.venv\Scripts\python.exe"
+$env:PYTHONPATH = "src"
+$env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUTF8 = "1"
 
 if (-not (Test-Path $venvPython)) {
     Write-Host "[ERROR] No se encontró el entorno virtual en .venv" -ForegroundColor Red
-    Write-Host "Crea el entorno con:"
-    Write-Host "    python -m venv .venv"
-    Write-Host "    .\.venv\Scripts\pip install -r requirements.txt"
-    Write-Host "    .\.venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu128"
     exit 1
 }
 
-$cmdArgs = @("src\train.py", "--model", $model, "--epochs", $epochs, "--batch-size", $batchSize, "--source", $source, "--resume-auto")
+$cachePath = "data\stead_subset_${nTrainEvents}ev.npz"
 
-if ($steadDir -ne "") {
-    $cmdArgs += @("--stead-dir", $steadDir)
-}
+$cmdArgs = @(
+    "src\train.py",
+    "--model", $model,
+    "--source", $source,
+    "--stead-dir", $steadDir,
+    "--stead-cache", $cachePath,
+    "--n-train-events", $nTrainEvents,
+    "--n-train-noise", $nTrainNoise,
+    "--epochs", $epochs,
+    "--batch-size", $batchSize,
+    "--checkpoint-dir", $checkpointDir,
+    "--resume-auto"
+)
 
 if ($resume) {
-    $cmdArgs += @("--resume", "checkpoints\checkpoint_last.pt")
+    $cmdArgs += @("--resume", "$checkpointDir\checkpoint_last.pt")
 }
 
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "  AlertaP - Iniciando Entrenamiento en Windows (RTX 5050 CUDA)" -ForegroundColor Cyan
+Write-Host "  AlertaP - Entrenamiento con Datos Reales STEAD (RTX 5050 CUDA)" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 Write-Host "Comando: $venvPython $($cmdArgs -join ' ')" -ForegroundColor Yellow
 Write-Host ""

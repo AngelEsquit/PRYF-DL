@@ -2,32 +2,21 @@
 setlocal enabledelayedexpansion
 
 echo ======================================================================
-echo    AlertaP - Lanzador de Entrenamiento PyTorch (Windows / RTX 5050)
+echo    AlertaP - Entrenamiento con Datos Reales STEAD (RTX 5050 CUDA)
 echo ======================================================================
 
-REM Verificar entorno virtual
 if not exist ".venv\Scripts\python.exe" (
     echo [ERROR] No se encontro el entorno virtual en .venv\
-    echo Por favor crea el entorno con:
-    echo     python -m venv .venv
-    echo     .venv\Scripts\pip install -r requirements.txt
-    echo     .venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu128
     pause
     exit /b 1
 )
 
-REM Comprobar si se pasaron argumentos adicionales
-set ARGS=%*
-if "%ARGS%"=="" (
-    echo [*] No se pasaron argumentos. Usando configuracion recomendada:
-    echo     Modelo: conv1d, Epocas: 50, Batch: 64, Resume Automatico: Activado
-    echo.
-    .venv\Scripts\python.exe src\train.py --model conv1d --epochs 50 --batch-size 64 --resume-auto
-) else (
-    echo [*] Ejecutando con argumentos personalizados: %ARGS%
-    echo.
-    .venv\Scripts\python.exe src\train.py %ARGS%
-)
+set PYTHONPATH=src
+set PYTHONIOENCODING=utf-8
+set PYTHONUTF8=1
+
+REM Ejecutar con datos reales STEAD (20,000 ventanas reales de la base de 91 GB)
+.venv\Scripts\python.exe src\train.py --source stead --stead-dir data --model conv1d --epochs 60 --batch-size 64 --n-train-events 10000 --n-train-noise 10000 --stead-cache data\stead_subset_10000ev.npz --checkpoint-dir checkpoints_stead --resume-auto %*
 
 echo.
 echo ======================================================================
