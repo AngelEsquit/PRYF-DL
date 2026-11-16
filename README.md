@@ -36,8 +36,10 @@ Para reproducir las métricas:
 
 El comando genera `results/metrics.json` (métricas, curva de valor y sensibilidad) y
 `results/value_curve.png`. Las señales sintéticas son una
-validación controlada del pipeline; la integración con STEAD o FDSN/IRIS queda
-preparada como siguiente etapa y se documenta explícitamente en el informe.
+validación controlada del pipeline. La integración con STEAD ya está hecha (ver la
+sección siguiente y los resultados en `results/metrics_stead.json`); la validación
+FDSN/IRIS está implementada pero opcional (`--fdsn`) y no forma parte de los
+resultados reportados. Todo se documenta en el informe.
 
 ## Datos reales (STEAD) y validación local (FDSN/IRIS)
 
