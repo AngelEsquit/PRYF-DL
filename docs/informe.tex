@@ -20,8 +20,11 @@ AlertaP es un prototipo de alerta temprana sísmica que recibe ventanas de un
 sismógrafo de tres componentes, detecta la llegada de la onda P y estima cuántos
 segundos quedan antes de la onda S. Implementa un detector profundo de dos capas
 ocultas, un baseline STA/LTA y un dashboard de demostración. La evaluación usa
-60 ventanas reproducibles (30 eventos y 30 de ruido) y reporta error de picking,
-precisión, recall, F1, latencia y valor económico neto. La decisión central del
+dos escenarios: 60 ventanas sintéticas reproducibles y un subconjunto real de STEAD
+(1,499 eventos y 1,500 ventanas de ruido en prueba, particionados por evento).
+Reporta error de picking, precisión, recall, F1, latencia y valor económico neto.
+En datos sintéticos el baseline STA/LTA basta; en STEAD, una CNN 1-D supera al
+STA/LTA en todas las métricas y en valor neto (\$9.20 M frente a \$5.78 M). La decisión central del
 proyecto es tratar el umbral como una decisión operativa: bajar el umbral puede
 ganar anticipación, pero aumenta falsas alarmas y paros innecesarios.
 \end{abstract}
@@ -39,7 +42,8 @@ degrada con ruido cultural, variación de estación y amplitud, y que un modelo
 profundo, que aprende patrones temporales y combina las tres componentes,
 compensa esa degradación. Esta hipótesis se contrasta con un baseline justo en la
 sección de evaluación y, como se verá, \textbf{no se confirma} sobre los datos
-sintéticos actuales. No se afirma que el prototipo sea un sistema certificado: su
+sintéticos (demasiado limpios), pero \textbf{sí se confirma} sobre registros reales
+de STEAD. No se afirma que el prototipo sea un sistema certificado: su
 objetivo académico es medir el intercambio entre calidad técnica y valor de
 negocio.
 
@@ -54,15 +58,28 @@ registros de tres componentes y llegadas P/S etiquetadas, como fuente principal.
 También propone validar con estaciones de Guatemala mediante FDSN/IRIS cuando haya
 disponibilidad. En esta entrega se implementa una capa sintética controlada para
 que el repositorio y las métricas sean ejecutables sin descargar gigabytes ni
-depender de red. Cada ventana dura 12 s a 100 Hz y contiene Z, N y E. Los eventos
+depender de red, y se complementa con un subconjunto real de STEAD
+(sección~\ref{sec:stead}). Cada ventana dura 12 s a 100 Hz y contiene Z, N y E. Los eventos
 tienen una llegada P entre 2 y 5 s, una llegada S entre 1 y 2.8 s después, ruido
 gaussiano y ondas amortiguadas; las ventanas negativas contienen únicamente
 ruido. La semilla por defecto es 23361.
 
-Para una integración real, los registros STEAD/FDSN deben convertirse a la misma
-forma $(T,3)$, normalizarse por ventana, conservar sus etiquetas P/S y separarse
-por evento/estación para evitar fuga entre entrenamiento y prueba. La señal se
-filtra con un pasa-banda Butterworth de 1--18 Hz.
+Los registros STEAD/FDSN se convierten a la misma forma $(T,3)$, se normalizan
+por ventana, conservan sus etiquetas P/S y se separan por evento para evitar fuga
+entre entrenamiento y prueba. La señal se filtra con un pasa-banda Butterworth de
+1--18 Hz.
+
+\subsection{Subconjunto de STEAD}\label{sec:stead}
+Se usó STEAD (Mousavi et al., 2019, \textit{IEEE Access}; licencia CC BY 4.0),
+descargado manualmente (\texttt{merged.csv} y \texttt{merged.hdf5}). Se extrajeron
+ventanas de 12 s con llegadas P y S etiquetadas (separación mínima S--P de 1 s) y
+ventanas de ruido. La partición es 70/15/15 \% (entrenamiento/validación/prueba)
+asignada por un \textit{hash} del identificador del evento, de modo que ningún
+evento aparece en dos particiones. El modelo se entrenó con 10,000 eventos y
+10,000 ventanas de ruido; el umbral se eligió con el conjunto de validación y todas
+las cifras reales se reportan sobre el conjunto de prueba (1,499 eventos y 1,500
+ventanas de ruido). Los resultados se guardan en
+\texttt{results/metrics\_stead.json}.
 
 \subsection{Arquitectura}
 \begin{center}
@@ -79,8 +96,12 @@ filtra con un pasa-banda Butterworth de 1--18 Hz.
 El modelo recibe cuatro variables por instante agregadas sobre las tres
 componentes. Se entrena con Adam, 160 iteraciones máximas, validación interna
 15\%, early stopping y semilla fija. Es una aproximación reproducible y liviana
-a PhaseNet/EQTransformer; la siguiente iteración sustituye el extractor por una
-CNN 1-D o fine-tuning de un picker preentrenado con STEAD.
+a PhaseNet/EQTransformer. Para los datos reales se entrenó además una
+\textbf{CNN 1-D} en PyTorch (\texttt{src/models.py}): 4 bloques convolucionales
+con 32 filtros base, \textit{dropout} de 0.15, entrada de tres canales y salida
+de probabilidad de fase P por muestra. Se entrenó 60 épocas con Adam
+($lr=10^{-3}$, lote de 64), precisión mixta y \textit{checkpoints} atómicos; el
+mejor modelo se selecciona por valor económico en validación (época 56).
 
 \section{Modelo, baseline y decisión de umbral}
 El baseline es STA/LTA causal: compara la energía media de una ventana corta de
@@ -145,6 +166,59 @@ anticipación, pero también FP; uno mayor reduce falsos disparos y puede perder
 inicio de un evento. La política correcta depende del costo real de detener una
 planta versus el costo del daño evitado, que es lo que formaliza la siguiente
 sección.
+
+\subsection{Resultados en STEAD real}\label{sec:stead-res}
+Con el mismo protocolo (umbral elegido por valor en validación, resultados en
+prueba) y los mismos supuestos económicos, el detector profundo (CNN 1-D) y el
+baseline STA/LTA obtienen:
+
+\begin{table}[h]
+\centering
+\caption{Métricas en el conjunto de prueba de STEAD (1,499 eventos y 1,500 ventanas de ruido).}
+\begin{tabular}{lcccccc}
+\toprule
+Sistema & Umbral & Precisión & Recall & F1 & Error P (s) & Valor neto\\
+\midrule
+STA/LTA & 2.5 & 0.8910 & 0.8346 & 0.8619 & 0.5866 & \$5,778,931\\
+CNN 1-D (DeepPhase) & 0.50 & \textbf{0.9622} & \textbf{0.9513} & \textbf{0.9567} & \textbf{0.1888} & \textbf{\$9,196,291}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Matriz de confusión en el umbral elegido: la CNN 1-D logra 1,426 VP, 56 FP y 73 FN;
+STA/LTA, 1,251 VP, 153 FP y 248 FN. La anticipación media es de 7.06 s para la CNN
+frente a 6.91 s para STA/LTA, y la latencia media de inferencia de la CNN es de
+1.57 ms. A diferencia del caso sintético, \textbf{el modelo profundo supera al
+clásico}: mejora el recall en 11.7 puntos, la precisión en 7.1 puntos y reduce el
+error de picking de 0.59 s a 0.19 s (la CNN cumple el criterio $<0.30$ s;
+STA/LTA no). El valor neto es \$3.42 M mayor (+59 \%). Ambos superan 0.80 de
+precisión y recall, aunque STA/LTA con poco margen en recall (0.83), y la latencia
+es muy inferior a 2 s.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{../results/value_curve_stead.png}
+\caption{Valor neto en el conjunto de prueba de STEAD al variar el umbral.}
+\label{fig:valor-stead}
+\end{figure}
+
+La curva de valor de la CNN es mucho más estable que en datos sintéticos: entre 0.40
+y 0.60 el valor se mantiene en \$9.14--9.20 M, y cae de forma marcada a partir de
+0.65 (recall 0.94) y sobre todo desde 0.85 (recall 0.83, \$5.83 M). STA/LTA, en
+cambio, es muy sensible a su umbral: pasa de $-$\$0.97 M (1.5) a \$5.92 M (2.0) y
+vuelve a negativo desde 4.5. El umbral se eligió en validación (0.50 para la CNN,
+2.5 para STA/LTA); en prueba el óptimo de STA/LTA habría sido 2.0 (\$5.92 M), y
+aun así queda \$3.27 M por debajo de la CNN. Variando $v_s$, $c_{fa}$ y $c_{fn}$ en
+$\pm$20 \% y $\pm$50 \%, el umbral óptimo de la CNN permanece en 0.50 en los 12
+escenarios y su ventaja sobre STA/LTA va de \$2.54 M a \$4.29 M: ningún supuesto
+económico razonable cambia el orden.
+
+Hay que ser cautos con estas cifras: son un subconjunto de STEAD (no una red
+operativa), el valor económico depende de supuestos y el modelo de valor cuenta
+cada ventana como independiente. STEAD es mayormente de sismos locales a
+regionales y no representa a Guatemala de forma específica. La validación
+FDSN/IRIS no forma parte de los resultados reportados
+(\texttt{fdsn\_validation} no está en \texttt{metrics\_stead.json}).
 
 \section{Modelo de valor}\label{sec:valor}
 \subsection{Función de valor}
@@ -228,6 +302,9 @@ advierte que el resultado no es suficiente para producción.
 \item Las señales sintéticas no representan toda la geología, instrumentación,
   ruido ni distribución de magnitudes de Guatemala. La métrica sintética no es
   evidencia de desempeño operacional.
+\item Los resultados en STEAD provienen de un subconjunto con partición por
+  evento pero no por estación; la similitud entre estaciones de entrenamiento y
+  prueba puede inflar el desempeño. No se ha validado en estaciones guatemaltecas.
 \item La detección P no estima por sí sola magnitud, epicentro ni intensidad.
   La onda S puede llegar antes por geometría y distancia; ``anticipación'' debe
   calcularse con un modelo físico y una red de estaciones.
@@ -242,9 +319,9 @@ advierte que el resultado no es suficiente para producción.
 
 \section{Iteraciones y trabajo futuro}
 La iteración I0 es STA/LTA; I1 agrega el extractor de características y MLP;
-I2 incorpora tres componentes y selección por umbral; I3 será fine-tuning de una
-red de picking con STEAD y validación regional. En la siguiente fase se deben
-comparar CNN 1-D, PhaseNet y EQTransformer, medir curvas precisión--recall,
+I2 incorpora tres componentes y selección por umbral; I3 entrena una CNN 1-D con
+STEAD real (completada). La siguiente fase es la validación regional y la
+partición por estación. Se deben comparar la CNN 1-D con PhaseNet y EQTransformer, medir curvas precisión--recall,
 calibración, error por SNR y desempeño por estación, y consultar FDSN/IRIS para
 eventos guatemaltecos. Finalmente se debe desplegar un servicio de streaming con
 ventanas solapadas, confirmación multiestación y un simulador del paro de
@@ -254,9 +331,12 @@ maquinaria.
 AlertaP convierte la propuesta en un producto ejecutable de extremo a extremo:
 señal $\rightarrow$ procesamiento $\rightarrow$ modelo $\rightarrow$ alerta
 $\rightarrow$ valor. La comparación justa STA/LTA/DeepPhase con costos explícitos
-muestra que, en datos sintéticos de alta señal/ruido, el baseline clásico basta;
-el valor del deep learning debe demostrarse con datos reales (STEAD) o
-condiciones de ruido más exigentes, que es el trabajo pendiente. El código está en:
+muestra que, en datos sintéticos de alta señal/ruido, el baseline clásico basta,
+pero en registros reales de STEAD la CNN 1-D lo supera con claridad (F1 0.957 frente
+a 0.862, error de picking 0.19 s frente a 0.59 s, y \$9.20 M frente a \$5.78 M de
+valor neto), con una ventaja estable ante cambios de los supuestos económicos.
+Queda pendiente la validación con estaciones guatemaltecas y la partición por
+estación. El código está en:
 \url{https://github.com/AngelEsquit/PRYF-DL}
 
 \begin{lstlisting}
