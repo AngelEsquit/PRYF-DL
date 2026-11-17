@@ -1,0 +1,137 @@
+{
+  "source": "synthetic",
+  "checkpoint": "checkpoints/best_model.pt",
+  "seed": 2026,
+  "threshold": 0.5,
+  "n_test_windows": 600,
+  "test_outcomes": {
+    "TP": 298,
+    "FN": 2,
+    "FP": 0,
+    "TN": 300
+  },
+  "ig": {
+    "baseline": "ceros",
+    "n_steps": 64,
+    "internal_batch": 64
+  },
+  "occlusion": {
+    "window_samples": 50,
+    "stride_samples": 25,
+    "baseline": 0.0
+  },
+  "n_global_events": 200,
+  "ig_completeness_rel_error_mean": 0.025799615308642387,
+  "ig_completeness_rel_error_p95": 0.06875457614660263,
+  "mass_within_1s_of_P": 0.999980628490448,
+  "mass_before_P_minus_1s": 1.9294109733891673e-05,
+  "mass_after_decision_sample": 0.7149286866188049,
+  "future_reach_after_decision_s_mean": 0.4917,
+  "channel_share_ZNE": {
+    "Z": 0.43129464983940125,
+    "N": 0.22344477474689484,
+    "E": 0.3452606499195099
+  },
+  "ig_vs_occlusion_spearman": 0.7235139462571479,
+  "ig_zero_vs_noise_baseline_spearman": 0.9471870622974327,
+  "ig_trained_vs_random_model_spearman": 0.9487617506008498,
+  "ig_steps_sensitivity_spearman": 0.9929667256737463,
+  "occlusion_trained_vs_random_model_spearman": 0.39753856735764087,
+  "ig_vs_signal_amplitude_spearman": 0.5232881838844524,
+  "occlusion_vs_signal_amplitude_spearman": 0.3751617428456953,
+  "cost_ms_per_explanation_cpu": {
+    "integrated_gradients": 243.1428500043694,
+    "occlusion": 153.44059000490233
+  },
+  "mean_decision_minus_true_P_s": -0.15009999999999998,
+  "alerts_kept_if_future_hidden_until": {
+    "0.00s": 0.02,
+    "0.10s": 0.76,
+    "0.20s": 0.985,
+    "0.30s": 1.0,
+    "0.50s": 0.985,
+    "1.00s": 1.0
+  },
+  "deletion_logit_drop": {
+    "Integrated Gradients": [
+      0.0,
+      1.7855759859085083,
+      1.892473578453064,
+      1.8976609706878662,
+      1.8977172374725342,
+      1.8977136611938477,
+      1.8977136611938477,
+      1.8977136611938477,
+      1.8977136611938477
+    ],
+    "Oclusión": [
+      0.0,
+      1.8394476175308228,
+      1.910512089729309,
+      1.9267398118972778,
+      1.9265899658203125,
+      1.9265894889831543,
+      1.9265894889831543,
+      1.9265894889831543,
+      1.9265894889831543
+    ],
+    "aleatorio": [
+      0.0,
+      0.06251581013202667,
+      0.12340626865625381,
+      0.17072533071041107,
+      0.2557985186576843,
+      0.32614096999168396,
+      0.4085964560508728,
+      0.44810348749160767,
+      0.5430555939674377
+    ]
+  },
+  "local_cases": [
+    {
+      "caso": "Acierto de alta confianza",
+      "indice": 57,
+      "resultado": "TP",
+      "p_max": 0.9891,
+      "t_decision_s": 3.46,
+      "p_real_s": 3.59,
+      "snr_db": 6.77
+    },
+    {
+      "caso": "Error: sin aviso útil",
+      "indice": 197,
+      "resultado": "FN",
+      "p_max": 0.9696,
+      "t_decision_s": 3.73,
+      "p_real_s": 4.39,
+      "snr_db": 3.88
+    },
+    {
+      "caso": "Cercano al umbral",
+      "indice": 573,
+      "resultado": "TN",
+      "p_max": 0.3927,
+      "t_decision_s": 7.86,
+      "p_real_s": null,
+      "snr_db": null
+    },
+    {
+      "caso": "Subgrupo: evento de menor SNR",
+      "indice": 146,
+      "resultado": "TP",
+      "p_max": 0.9569,
+      "t_decision_s": 3.0,
+      "p_real_s": 3.17,
+      "snr_db": 1.18
+    },
+    {
+      "caso": "Rechazo correcto de ruido",
+      "indice": 350,
+      "resultado": "TN",
+      "p_max": 0.1527,
+      "t_decision_s": 2.3,
+      "p_real_s": null,
+      "snr_db": null
+    }
+  ]
+}
