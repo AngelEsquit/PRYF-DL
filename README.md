@@ -106,6 +106,29 @@ Durante el entrenamiento se generan en `checkpoints/`:
 .venv/bin/python src/evaluate.py --checkpoint checkpoints/best_model.pt
 ```
 
+## Explicabilidad (Laboratorio 10)
+
+`src/explain.py` aplica **Integrated Gradients** (método principal, `captum`) y
+**oclusión por ventanas** (alternativa de contraste) a la CNN 1-D ya entrenada, sin
+reentrenarla. Explica la decisión en la muestra `t*` (primera excedencia del umbral
+tras el calentamiento, o el máximo del logit si no hay alerta).
+
+```bash
+pip install -r requirements.txt            # incluye captum
+python src/explain.py                      # usa STEAD si existe data/stead_subset_10000ev.npz
+python src/explain.py --source stead --cache RUTA/stead_subset_10000ev.npz
+python src/explain.py --source synthetic   # solo desarrollo, sin datos reales
+```
+
+Necesita el caché de STEAD (`data/stead_subset_10000ev.npz`, no versionado) y
+`checkpoints_stead/best_model.pt`. Con semilla fija (`--seed 2026`) regenera en
+`results/xai/`: `xai_local.png` (6 explicaciones locales), `xai_global.png`
+(atribución media alineada a la P, por componente y prueba de borrado) y
+`xai_summary.json` (parámetros, fidelidad, comprobaciones de cordura y casos
+elegidos). Parámetros de diseño principales: línea base cero, 64 pasos de IG,
+ventana de oclusión de 0.5 s con paso de 0.25 s y 200 eventos para la parte global.
+Con datos sintéticos los archivos llevan el sufijo `_synthetic`.
+
 ## Reproducibilidad y uso responsable
 
 La semilla, la tasa de muestreo, la arquitectura y el umbral están definidos en
