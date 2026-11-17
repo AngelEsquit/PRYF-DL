@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 import matplotlib
@@ -266,7 +267,7 @@ def select_cases(examples, outcomes, max_prob, snr, threshold) -> list[tuple[str
     # Error: el falso negativo con mayor probabilidad máxima (casi detectado) es el más instructivo.
     fn_mask = outcomes == "FN"
     if fn_mask.any():
-        pick("Error: evento perdido", fn_mask, max_prob, largest=True)
+        pick("Error: sin aviso útil", fn_mask, max_prob, largest=True)
     pick("Error: falsa alarma", outcomes == "FP", max_prob, largest=True)
     pick("Cercano al umbral", np.ones(len(outcomes), dtype=bool), -np.abs(max_prob - threshold), largest=True)
     ev = np.array([bool(e.label) for e in examples])
@@ -484,6 +485,17 @@ def main() -> None:
     steps_corr = mean_spearman(prof[:n_rand], temporal_profile(ig_half), tg[:n_rand])
 
     causal = causal_check(model, xg, tg, args.threshold)
+    # Costo por explicación (CPU, una ventana a la vez; el primer cálculo se descarta como calentamiento).
+    cost_n = min(10, len(tp))
+    integrated_gradients(model, xg[:1], tg[:1], n_steps=args.n_steps)
+    started = time.perf_counter()
+    for k in range(cost_n):
+        integrated_gradients(model, xg[k : k + 1], tg[k : k + 1], n_steps=args.n_steps)
+    ig_ms = (time.perf_counter() - started) / cost_n * 1000
+    started = time.perf_counter()
+    for k in range(cost_n):
+        occlusion(model, xg[k : k + 1], tg[k : k + 1])
+    occ_ms = (time.perf_counter() - started) / cost_n * 1000
     summary = {
         "source": source,
         "checkpoint": checkpoint,
@@ -508,6 +520,7 @@ def main() -> None:
         "occlusion_trained_vs_random_model_spearman": occ_rand_corr,
         "ig_vs_signal_amplitude_spearman": amp_corr,
         "occlusion_vs_signal_amplitude_spearman": amp_corr_occ,
+        "cost_ms_per_explanation_cpu": {"integrated_gradients": ig_ms, "occlusion": occ_ms},
         "mean_decision_minus_true_P_s": float(np.mean((tg - p_arr) / SAMPLE_RATE)),
         "alerts_kept_if_future_hidden_until": causal,
         "deletion_logit_drop": curves,
