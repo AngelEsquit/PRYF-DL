@@ -1,0 +1,146 @@
+{
+  "source": "stead",
+  "checkpoint": "checkpoints_stead/best_model.pt",
+  "seed": 2026,
+  "threshold": 0.5,
+  "n_test_windows": 2999,
+  "test_outcomes": {
+    "TP": 1426,
+    "FN": 73,
+    "FP": 56,
+    "TN": 1444
+  },
+  "ig": {
+    "baseline": "ceros",
+    "n_steps": 64,
+    "internal_batch": 64
+  },
+  "occlusion": {
+    "window_samples": 50,
+    "stride_samples": 25,
+    "baseline": 0.0
+  },
+  "n_global_events": 200,
+  "ig_completeness_rel_error_mean": 0.024970311671495438,
+  "ig_completeness_rel_error_p95": 0.0617416612803936,
+  "mass_within_1s_of_P": 0.9953845143318176,
+  "mass_before_P_minus_1s": 0.0009319338132627308,
+  "mass_after_decision_sample": 0.8322519063949585,
+  "future_reach_after_decision_s_mean": 0.8521,
+  "channel_share_ZNE": {
+    "Z": 0.7610435485839844,
+    "N": 0.12898442149162292,
+    "E": 0.10997207462787628
+  },
+  "ig_vs_occlusion_spearman": 0.5679483042522497,
+  "ig_zero_vs_noise_baseline_spearman": 0.5104623099978195,
+  "ig_trained_vs_random_model_spearman": 0.7578702263087805,
+  "ig_steps_sensitivity_spearman": 0.9928340521356495,
+  "occlusion_trained_vs_random_model_spearman": 0.5174974937145352,
+  "ig_vs_signal_amplitude_spearman": 0.4844592720180306,
+  "occlusion_vs_signal_amplitude_spearman": 0.5261505824403715,
+  "cost_ms_per_explanation_cpu": {
+    "integrated_gradients": 160.66132999985712,
+    "occlusion": 116.93367999978364
+  },
+  "mean_decision_minus_true_P_s": -0.1479,
+  "alerts_kept_if_future_hidden_until": {
+    "0.00s": 0.0,
+    "0.10s": 0.0,
+    "0.20s": 0.0,
+    "0.30s": 0.0,
+    "0.50s": 0.1,
+    "1.00s": 1.0
+  },
+  "deletion_logit_drop": {
+    "Integrated Gradients": [
+      0.0,
+      4.859426975250244,
+      5.731861591339111,
+      5.747647762298584,
+      5.747767448425293,
+      5.747767448425293,
+      5.747767448425293,
+      5.747767448425293,
+      5.747767448425293
+    ],
+    "Oclusión": [
+      0.0,
+      5.173842906951904,
+      5.703637599945068,
+      5.787330150604248,
+      5.771728515625,
+      5.765093803405762,
+      5.765093803405762,
+      5.765093803405762,
+      5.765093803405762
+    ],
+    "aleatorio": [
+      0.0,
+      0.3026580214500427,
+      0.7051272392272949,
+      0.8365947604179382,
+      1.142824649810791,
+      1.4163075685501099,
+      1.6628156900405884,
+      1.8998788595199585,
+      2.1503310203552246
+    ]
+  },
+  "local_cases": [
+    {
+      "caso": "Acierto de alta confianza",
+      "indice": 795,
+      "resultado": "TP",
+      "p_max": 0.9995,
+      "t_decision_s": 1.89,
+      "p_real_s": 2.04,
+      "snr_db": 22.03
+    },
+    {
+      "caso": "Error: sin aviso útil",
+      "indice": 507,
+      "resultado": "FN",
+      "p_max": 0.9906,
+      "t_decision_s": 2.54,
+      "p_real_s": 3.15,
+      "snr_db": 38.03
+    },
+    {
+      "caso": "Error: falsa alarma",
+      "indice": 1605,
+      "resultado": "FP",
+      "p_max": 0.9738,
+      "t_decision_s": 4.2,
+      "p_real_s": null,
+      "snr_db": null
+    },
+    {
+      "caso": "Cercano al umbral",
+      "indice": 2738,
+      "resultado": "TN",
+      "p_max": 0.4993,
+      "t_decision_s": 4.74,
+      "p_real_s": null,
+      "snr_db": null
+    },
+    {
+      "caso": "Subgrupo: evento de menor SNR",
+      "indice": 246,
+      "resultado": "TP",
+      "p_max": 0.9942,
+      "t_decision_s": 3.9,
+      "p_real_s": 4.04,
+      "snr_db": 0.8
+    },
+    {
+      "caso": "Rechazo correcto de ruido",
+      "indice": 2521,
+      "resultado": "TN",
+      "p_max": 0.0045,
+      "t_decision_s": 11.84,
+      "p_real_s": null,
+      "snr_db": null
+    }
+  ]
+}

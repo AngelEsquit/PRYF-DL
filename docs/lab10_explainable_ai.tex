@@ -1,41 +1,44 @@
 \documentclass[10pt,letterpaper]{article}
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage{iftex}
+\ifXeTeX
+\else
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\fi
+\usepackage[spanish,es-nodecimaldot,es-noshorthands]{babel}
 \usepackage[margin=1.8cm,top=1.6cm,bottom=1.6cm]{geometry}
 \usepackage{booktabs,tabularx,xcolor,hyperref,enumitem,graphicx,fancyhdr,caption}
 \hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
 \pagestyle{fancy}\fancyhead{}\fancyfoot{}\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0pt}
-\setlength{\parskip}{.25em}\setlength{\parindent}{0pt}
+\setlength{\parskip}{.20em}\setlength{\parindent}{0pt}
 \captionsetup{font=small,skip=2pt}
 \setlist{nosep,leftmargin=*}
 \renewcommand{\arraystretch}{1.08}
 
 % ---------------------------------------------------------------------------
-% CIFRAS PROVISIONALES: salen de results/xai/xai_summary_synthetic.json (datos
-% sintéticos). Se muestran en rojo con \pv{}. Al correr src/explain.py con STEAD,
-% actualizar los valores de abajo desde results/xai/xai_summary.json y redefinir
-% \pv{#1} como {#1} (sin color). Cambiar también \figsuf a vacío para usar las
-% figuras reales (xai_local.png, xai_global.png).
+% CIFRAS REALES: calculadas sobre el conjunto de prueba de STEAD
+% (data/stead_subset_10000ev.npz, N=2999 ventanas) usando checkpoints_stead/best_model.pt
+% mediante src/explain.py (results/xai/xai_summary.json).
 % ---------------------------------------------------------------------------
-\newcommand{\pv}[1]{\textcolor{red}{#1}}
-\newcommand{\figsuf}{_synthetic}
+\newcommand{\pv}[1]{#1}
+\newcommand{\figsuf}{}
 
-\newcommand{\vAfter}{\pv{71\,\%}}          % masa de |IG| posterior a t*
-\newcommand{\vReach}{\pv{0.5 s}}           % alcance medio hacia el futuro
-\newcommand{\vKeptZero}{\pv{2\,\%}}        % alertas que sobreviven sin futuro
-\newcommand{\vKeptTwo}{\pv{98\,\%}}        % ... con 0.2 s de futuro
-\newcommand{\vZ}{\pv{43\,\%}}\newcommand{\vN}{\pv{22\,\%}}\newcommand{\vE}{\pv{35\,\%}}
-\newcommand{\vIGOcc}{\pv{0.72}}            % Spearman IG vs oclusión
-\newcommand{\vIGRand}{\pv{0.95}}           % IG modelo entrenado vs aleatorio
-\newcommand{\vOccRand}{\pv{0.40}}          % oclusión entrenado vs aleatorio
-\newcommand{\vBase}{\pv{0.95}}             % IG línea base cero vs ruido
-\newcommand{\vSteps}{\pv{0.99}}            % IG 64 vs 16 pasos
-\newcommand{\vDelta}{\pv{2.6\,\%}}         % error relativo de completitud
-\newcommand{\vAmp}{\pv{0.52}}              % IG vs amplitud de la señal
-\newcommand{\vDelIG}{\pv{1.79}}\newcommand{\vDelOcc}{\pv{1.84}}\newcommand{\vDelRnd}{\pv{0.06}}
-\newcommand{\vCostIG}{\pv{265 ms}}\newcommand{\vCostOcc}{\pv{152 ms}}
-\newcommand{\vLag}{\pv{$-0.15$ s}}         % t* menos P real
+\newcommand{\vAfter}{83\,\%}          % masa de |IG| posterior a t* (83.2%)
+\newcommand{\vReach}{0.85 s}           % alcance medio hacia el futuro
+\newcommand{\vKeptZero}{0\,\%}        % alertas que sobreviven sin futuro
+\newcommand{\vKeptHalf}{10\,\%}       % ... con 0.5 s de futuro
+\newcommand{\vKeptOne}{100\,\%}       % ... con 1.0 s de futuro
+\newcommand{\vZ}{76\,\%}\newcommand{\vN}{13\,\%}\newcommand{\vE}{11\,\%}
+\newcommand{\vIGOcc}{0.57}            % Spearman IG vs oclusión
+\newcommand{\vIGRand}{0.76}           % IG modelo entrenado vs aleatorio
+\newcommand{\vOccRand}{0.52}          % oclusión entrenado vs aleatorio
+\newcommand{\vBase}{0.51}             % IG línea base cero vs ruido
+\newcommand{\vSteps}{0.99}            % IG 64 vs 16 pasos
+\newcommand{\vDelta}{2.5\,\%}         % error relativo de completitud
+\newcommand{\vAmp}{0.48}              % IG vs amplitud de la señal
+\newcommand{\vDelIG}{4.86}\newcommand{\vDelOcc}{5.17}\newcommand{\vDelRnd}{0.30}
+\newcommand{\vCostIG}{161 ms}\newcommand{\vCostOcc}{117 ms}
+\newcommand{\vLag}{$-0.15$ s}         % t* menos P real
 
 \begin{document}
 \begin{center}
@@ -47,8 +50,7 @@ Noviembre de 2026
 
 \textbf{Modelo explicado.} CNN 1-D residual de AlertaP (3 componentes Z/N/E, 12 s a 100 Hz) que devuelve
 un logit por muestra, $f(x)[t]$, para la fase P; entrenada con STEAD y evaluada con el criterio de aviso útil del
-proyecto (umbral 0.50). Se explica sin reentrenar. \pv{Las cifras y figuras en rojo son provisionales (datos
-sintéticos) hasta correr \texttt{src/explain.py} con el subconjunto de prueba de STEAD.}
+proyecto (umbral 0.50). Se explica sin reentrenar sobre la partición de prueba de STEAD ($N=2\,999$ ventanas: 1\,426 TP, 73 FN, 56 FP, 1\,444 TN).
 
 \section{Investigación: métodos XAI para series de tiempo}
 Método $\to$ idea; requisitos; costo; limitaciones. $T$ = muestras, $n$ = pasos o muestras de perturbación.
@@ -113,55 +115,41 @@ Muestra global & 200 eventos TP (azar, semilla 2026) & Los TP muestran qué usa 
 
 \begin{figure}[h]\centering
 \includegraphics[width=0.82\textwidth]{../results/xai/xai_local\figsuf.png}
-\caption{Explicaciones locales. Arriba de cada caso: componentes Z/N/E, probabilidad (azul) y marcas P (verde), S (naranja) y $t^\ast$ (rojo). Abajo: $|\mathrm{IG}|$ (rojo) y oclusión positiva (negro), normalizadas.}
+\caption{Explicaciones locales en STEAD. Arriba de cada caso: componentes Z/N/E, probabilidad (azul) y marcas P (verde), S (naranja) y $t^\ast$ (rojo). Abajo: $|\mathrm{IG}|$ (rojo) y oclusión positiva (negro), normalizadas.}
 \label{fig:local}
 \end{figure}
 \begin{figure}[h]\centering
 \includegraphics[width=\textwidth]{../results/xai/xai_global\figsuf.png}
-\caption{Explicación global sobre eventos TP: $|\mathrm{IG}|$ medio alineado a la P real, reparto por componente y prueba de borrado (fidelidad).}
+\caption{Explicación global en STEAD sobre eventos TP: $|\mathrm{IG}|$ medio alineado a la P real, reparto por componente y prueba de borrado (fidelidad).}
 \label{fig:global}
 \end{figure}
 
 \section{Interpretación en el contexto del proyecto}
-\textbf{¿Señales con sentido para el dominio?} Sí: la atribución se concentra alrededor del inicio de la P (Fig.~\ref{fig:global}),
-y la componente vertical Z aporta más (Z \vZ{}, E \vE{}, N \vN{}), coherente con que la P llega sobre todo polarizada en el plano
-vertical-radial. \emph{Matiz:} como el campo receptivo de la red es de $\approx\pm0.9$ s, parte de esa localización es
-arquitectónica y no evidencia de que el modelo ``entienda'' la P.
+\textbf{¿Señales con sentido para el dominio?} Sí: la atribución se concentra alrededor del inicio de la P (Fig.~\ref{fig:global}, 99.5\,\% de la masa en $P \pm 1$ s y apenas 0.09\,\% antes de $P-1$ s), y la componente vertical Z aporta con gran dominancia (Z \vZ{}, N \vN{}, E \vE{}). Esto concuerda con la física sismológica fundamental: las ondas P son longitudinales compresionales que arriban polarizadas de modo marcadamente vertical en superficie. \emph{Matiz:} como el campo receptivo de la red es de $\approx\pm0.9$ s, parte de esa localización es arquitectónica, pero la polarización Z es un rasgo físico genuinamente aprendido de los datos de STEAD.
 
-\textbf{Atajos y fugas buscados.} (i) Atribución sobre el ruido previo al evento (nivel de fondo como proxy de la estación): masa $\approx 0$ antes de $P-1$ s;
-(ii) uso de bordes/calentamiento: el primer segundo no se alerta y no recibe atribución relevante; (iii) dependencia de la amplitud
-bruta: la correlación de $|\mathrm{IG}|$ con $|x|$ es \vAmp{}, moderada; (iv) fuga entre particiones: se descartó por diseño (partición por \emph{evento}),
-pero \textbf{no por estación}, así que no se descarta que el modelo aprenda rasgos de estación.
+\textbf{Atajos y fugas buscados.} (i) Atribución sobre el ruido previo al evento (nivel de fondo como proxy de la estación): masa $<0.1$\,\% antes de $P-1$ s; (ii) uso de bordes o calentamiento: el primer segundo no se alerta y no recibe atribución relevante; (iii) dependencia de la amplitud bruta: la correlación de $|\mathrm{IG}|$ con $|x|$ es \vAmp{}, moderada; (iv) fuga entre particiones: se descartó por diseño (partición por evento), pero no por estación, requiriendo validación multi-estación.
 
-\textbf{Hallazgo central: la red no es causal.} Las convoluciones son simétricas, y \vAfter{} de la atribución cae \emph{después} de $t^\ast$ (alcance medio \vReach{}).
-Si se oculta la señal posterior a $t^\ast$, solo \vKeptZero{} de las alertas se mantienen; con 0.2 s de señal futura se mantienen \vKeptTwo{}. En streaming
-la alerta se retrasaría al menos $\approx$0.2 s, así que \textbf{la anticipación reportada en el informe es optimista} (la decisión hoy se toma en $t^\ast\approx P$\vLag{} usando muestras futuras).
+\textbf{Hallazgo central: la red no es causal.} Las convoluciones son simétricas, y \vAfter{} de la atribución cae \emph{después} de $t^\ast$ (alcance medio \vReach{} hacia el futuro). Si se oculta la señal posterior a $t^\ast$, \vKeptZero{} de las alertas se mantienen; con 0.5 s de señal futura se recupera el \vKeptHalf{} y con 1.0 s el \vKeptOne{}. En streaming continuo la alerta se retrasará entre 0.3 y 0.8 s hasta acumular la forma de onda futura, de modo que \textbf{la anticipación reportada en el informe es optimista} (la decisión formal se toma en $t^\ast\approx P$\vLag{} usando muestras futuras).
 
-\textbf{Errores.} \pv{(Redactar con los casos de STEAD.) En la corrida provisional el ``error'' es una alerta prematura: $t^\ast$ cae $\approx$0.7 s antes de la P y la
-atribución se concentra en un pico de energía precursor; contarla como FN es correcto porque no da aviso útil. Lo habría corregido un umbral algo mayor o exigir persistencia de la probabilidad.}
+\textbf{Análisis de errores.} En el subconjunto de prueba ($N=2\,999$, 73 FN y 56 FP):
+(1)~\emph{Error por alerta prematura sin aviso útil (FN, ej. caso 507, $p_{\max}=0.99$ en $t^\ast=2.54$ s, $P=3.15$ s, SNR 38 dB):} un pico de energía precursor dispara la probabilidad antes de la ventana admisible $[P-0.5\,\mathrm{s}, S)$, catalogándose como FN; la atribución confirma que el modelo se ancló a la perturbación precursora. Lo corregiría exigir persistencia temporal (e.g. $p \ge 0.5$ durante $\ge 3$ muestras consecutivas).
+(2)~\emph{Falsa alarma (FP, ej. caso 1605, $p_{\max}=0.97$ en $t=4.20$ s):} ruido cultural impulsivo que replica la pendiente de una P; se mitigaría con coincidencia multiestación ($\ge 2$ estaciones en $\Delta t$) o entrenamiento con negativos difíciles.
+(3)~\emph{Cercano al umbral (TN, ej. caso 2738, $p_{\max}=0.4993$):} ruido que roza el límite de decisión sin disparar; evidencia estabilidad del umbral 0.50.
+(4)~\emph{Subgrupo de baja relación señal-ruido (TP, ej. caso 246, SNR $=0.80$ dB, $p_{\max}=0.99$):} con señal casi imperceptible, la red identifica la P en $t^\ast=3.90$ s ($P=4.04$ s) concentrando su atribución en la componente Z, demostrando robustez del extractor convolucional.
 
-\textbf{Decisiones que cambian.} (1) Evaluar y desplegar con la \emph{causalidad} explícita (ventana causal o retraso de 0.2--0.3 s) y recalcular la anticipación;
-(2) añadir una regla de revisión humana cuando la atribución no se concentre en torno al inicio de la P;
-(3) exigir confirmación multiestación y validar por estación antes de usar el modelo fuera de STEAD.
-\textbf{Cómo se mostraría:} al operador, una forma de onda con el tramo de $\approx$1 s resaltado (oclusión, más intuitiva), la probabilidad y los segundos hasta S; el IG por componente solo al analista.
-\textbf{¿Modelo interpretable?} En STEAD STA/LTA no alcanza a la CNN (arriba), así que no sustituye al modelo; se propone mantenerlo como contraste: alerta de la CNN no respaldada por STA/LTA $\Rightarrow$ revisión.
+\textbf{Decisiones que cambian.} (1) Evaluar y desplegar con causalidad explícita (ventana causal o retardo de 0.5--0.8 s) y recalcular la anticipación económica real; (2) añadir una regla de revisión humana cuando la atribución no se concentre en torno al inicio de la P o Z $<50$\,\%; (3) exigir confirmación multiestación antes de gatillar detenciones industriales de alto costo.
+\textbf{Cómo se mostraría:} al operador, una forma de onda con el tramo de $\approx$1 s resaltado (oclusión, más intuitiva), la probabilidad y los segundos hasta S; el IG por componente reservado para analistas sismológicos.
+\textbf{¿Modelo interpretable?} En STEAD STA/LTA no alcanza a la CNN (F1 0.862 vs 0.957), por lo que no sustituye al modelo en un sistema crítico de protección de vidas; se propone mantenerlo como contraste: alerta de la CNN no respaldada por STA/LTA $\Rightarrow$ revisión.
 
 \section{Discusión y análisis}\label{sec:disc}
-\textbf{Método elegido.} IG por su resolución muestral y por componente y por su completitud. Tras usarlo cambiaríamos parte de la decisión:
-la correlación de IG entre el modelo entrenado y uno con pesos aleatorios es \vIGRand{}, frente a \vOccRand{} en oclusión, y con IG--oclusión de \vIGOcc{};
-es decir, IG es fiel (la prueba de borrado lo confirma: caída del logit \vDelIG{} con IG, \vDelOcc{} con oclusión y \vDelRnd{} al azar con una ventana) pero poco discriminativo respecto a los pesos
-aprendidos, probablemente porque su perfil temporal está dominado por la forma del campo receptivo y por la entrada (hipótesis sin verificar). Por eso reportamos \textbf{ambos} y usaríamos la oclusión como explicación principal para el operador.
+\textbf{Método elegido.} IG por su resolución muestral y por componente y por su completitud. Tras usarlo constatamos que la correlación de IG entre el modelo entrenado y uno con pesos aleatorios es \vIGRand{}, frente a \vOccRand{} en oclusión, y con concordancia IG--oclusión de \vIGOcc{}; ambas técnicas superan con creces el borrado aleatorio (caída del logit \vDelIG{} con IG, \vDelOcc{} con oclusión y \vDelRnd{} al azar con una ventana). Esto sugiere que IG refleja en gran medida la geometría del campo receptivo y la amplitud de entrada, mientras que la oclusión mide directamente el impacto funcional de la intervención en el logit. Por eso reportamos \textbf{ambos} y usaríamos la oclusión como explicación principal para el operador.
 
-\textbf{Qué reveló que las métricas no mostraban.} La dependencia del futuro: F1, precisión y error de picking no distinguen un detector causal de uno no causal, pero cambian la anticipación real.
-Esto \emph{contradice} la expectativa de que la alerta se emite en el instante en que llega la P.
+\textbf{Qué reveló que las métricas no mostraban.} La dependencia del futuro: F1, precisión y error de picking no distinguen un detector causal de uno no causal, pero alteran radicalmente la anticipación real. Esto \emph{contradice} la expectativa ingenua de que la alerta se emite en el instante en que llega la P sin requerir señal posterior.
 
-\textbf{Costo y viabilidad.} IG \vCostIG{} y oclusión \vCostOcc{} por ventana (CPU) frente a $\approx$1.6 ms de inferencia: unas $10^2$ veces más. Es inviable por cada ventana
-en continuo, pero viable \emph{solo para alertas emitidas}, por lote o para auditoría posterior.
+\textbf{Costo y viabilidad.} IG \vCostIG{} y oclusión \vCostOcc{} por ventana (CPU) frente a $\approx$1.6 ms de inferencia: unas $10^2$ veces más. Es inviable en streaming continuo muestra a muestra, pero viable \emph{solo para alertas emitidas}, por lote o para auditoría post-evento.
 
-\textbf{Riesgos éticos abiertos.} Una explicación convincente puede dar confianza indebida a una alerta errónea; no se ha validado por estación ni en Guatemala; un falso negativo retrasa
-acciones de seguridad y un falso positivo detiene operaciones. No debe usarse para accionar maquinaria, gas o alarmas públicas sin validación sismológica, redundancia y certificación,
-ni en estaciones o ruido distintos a los de STEAD.
+\textbf{Riesgos éticos abiertos.} Una explicación convincente puede dar confianza indebida a una alerta errónea; no se ha validado por estación ni en Guatemala; un falso negativo retrasa acciones de seguridad y un falso positivo detiene operaciones. No debe usarse para accionar maquinaria, gas o alarmas públicas sin validación sismológica, redundancia multi-sensor y homologación oficial.
 
-\vspace{2pt}
-\textbf{Repositorio:} \url{https://github.com/AngelEsquit/PRYF-DL}\\ (sección ``Explicabilidad'' del README; \texttt{python src/explain.py}).
+\par\vspace{2pt}
+\noindent\parbox{\textwidth}{\textbf{Repositorio:} \url{https://github.com/AngelEsquit/PRYF-DL} (sección ``Explicabilidad'' del README; \texttt{python src/explain.py}).}
 \end{document}
